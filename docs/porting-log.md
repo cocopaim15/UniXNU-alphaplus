@@ -294,3 +294,17 @@ Platforms/LG/mh2/Decompiled/DSDT.dsl
 
 判断：第 1–4 步是**有底稿的移植工作**（不是配置微调），每步都能在免费 CI 上跑通再前进；
 第 5 步才回到手机上。
+
+---
+
+## 4. 平台包骨架（2026-11-05 收尾时）
+
+- 已把 `mh2Pkg` 的 11 个文件复制并机械改名为 `firmware/uefi/Platforms/LG/alphaplusPkg/`
+  （overlay 目录，CI 构建前覆盖进 uefi-sheng 检出）。
+- 已改：`PLATFORM_NAME=alphaplus`、`OUTPUT_DIRECTORY=Build/alphaplusPkg`、
+  `FLASH_DEFINITION=alphaplusPkg/alphaplus.fdf`、文件名 `alphaplus.{dsc,fdf,dec}`。
+- 未改（见 `firmware/uefi/README.md`）：`MemoryMapLib.c` 的 Kernel / UEFI FD 段、
+  SMBIOS 串、以及缺失的 ACPI 表。
+- 停在这里的理由：`MemoryMapLib` 的抽象与 Aloha 的不同（`EFI_MEMORY_REGION_DESCRIPTOR`
+  vs `ARM_MEMORY_REGION_DESCRIPTOR_EX`），必须逐字段搬运；硬拼会得到能编译但内存映射错误的固件，
+  而错误的内存映射在真机上表现为随机死机——比构建失败更难查。
