@@ -64,20 +64,25 @@ jobs:
           curl -fsSL -o uefi/Silicium-ACPI/Platforms/LG/alphaplus/DSDT.aml \
             https://raw.githubusercontent.com/Project-Aloha/mu_aloha_platforms/main/Platforms/SurfaceDuo1Pkg/Device/lg-alpha/ACPI/DSDT.aml
           ls -l uefi/Silicium-ACPI/Platforms/LG/alphaplus/
-          # The DSC resolves vendor UEFI drivers as `alphaplus/QcomPkg/...` inside
-          # the Device-Binaries checkout. There is no alphaplus set upstream; the
-          # G8X (mh2) set is the closest LG SM8150 package, so use it for the first
-          # build and replace drivers as they prove wrong on the phone.
-          test -d uefi/Binaries/mh2
-          cp -r uefi/Binaries/mh2 uefi/Binaries/alphaplus
-          # The borrowed set carries G8X file names (BATTERY_MH2LM.PROVISION and
-          # friends); the platform package now asks for the alphaplus names.
-          find uefi/Binaries/alphaplus -type f | while read -r f; do
-            n=$(echo "$f" | sed 's/MH2LM/ALPHALM/g; s/mh2lm/alphalm/g; s/MH2/ALPHA/g; s/mh2/alphaplus/g')
-            if [ "$f" != "$n" ]; then mv "$f" "$n"; fi
-          done
+          # The vendor UEFI drivers for THIS phone live in Project-Aloha's lg-alpha
+          # tree, not in Device-Binaries (which only has mh2 for LG). Borrowing the
+          # G8X set built a firmware that never reached display init, so take the
+          # G8 set instead: same internal layout (QcomPkg/..., RawFiles/...).
+          git clone --depth 1 --filter=blob:none --sparse \
+            https://github.com/Project-Aloha/mu_aloha_platforms.git aloha
+          git -C aloha sparse-checkout set Platforms/SurfaceDuo1Pkg/Device/lg-alpha/Binaries
+          rm -rf uefi/Binaries/alphaplus
+          cp -r aloha/Platforms/SurfaceDuo1Pkg/Device/lg-alpha/Binaries uefi/Binaries/alphaplus
           find uefi/Binaries/alphaplus -name '*.inf' | head -5
           ls uefi/Binaries/alphaplus/RawFiles | head -10
+          # RAW.inc asks for BATTERY_ALPHALM.PROVISION; whatever the vendor blob is
+          # called in this set, give it that name.
+          RAW=uefi/Binaries/alphaplus/RawFiles
+          if [ ! -f "$RAW/BATTERY_ALPHALM.PROVISION" ]; then
+            SRC=$(ls "$RAW"/BATTERY_*.PROVISION 2>/dev/null | head -1)
+            if [ -n "$SRC" ]; then cp "$SRC" "$RAW/BATTERY_ALPHALM.PROVISION"; fi
+          fi
+          test -f "$RAW/BATTERY_ALPHALM.PROVISION"
           cp device/firmware/alphaplus.toml uefi/Resources/Configs/alphaplus.toml
           cat uefi/Resources/Configs/alphaplus.toml
           ls uefi/Platforms/LG/alphaplusPkg
