@@ -46,8 +46,13 @@
   #
   # UEFI Stack
   #
-  gArmPlatformTokenSpaceGuid.PcdCPUCoresStackBase|0xA0300000
-  gArmPlatformTokenSpaceGuid.PcdCPUCorePrimaryStackSize|0x40000
+  # The G8X package put the stack right behind its FD at 0xA0000000. Our FD sits
+  # at 0x9FC00000 and this phone's map has a hole at 0xA0300000, so a stack there
+  # is unmapped memory -- the firmware dies before it can do anything and the abl
+  # falls back to fastboot. 0x9FFB0000 is the "UEFI Stack" region in the lg-alpha
+  # PlatformMemoryMapLib that MemoryMapLib.c now carries.
+  gArmPlatformTokenSpaceGuid.PcdCPUCoresStackBase|0x9FFB0000
+  gArmPlatformTokenSpaceGuid.PcdCPUCorePrimaryStackSize|0x20000
 
   #
   # SMBIOS
