@@ -368,3 +368,51 @@ fastboot flash boot_a magisk_patched-30600_mZhNS.img
 
 看屏幕：出现 UniXNU 菜单 = 启动链打通；黑屏/循环则按 porting-log 第 2 节的坑位表逐项查
 （内存映射、FD 基址、DTB 变体、gzip 内核是否被 abl 解压）。
+
+---
+
+## 7. 真机验证：失败，以及把范围缩到 FV
+
+镜像构建全绿并不等于能启动。刷入后的十几次迭代如下（每次都是
+`fastboot flash boot_a` → 长按电源 → 观察，因为该 abl 的 `reboot` 不生效）：
+
+| 变量 | 结果 |
+| --- | --- |
+| gzip 内核 + 32 MiB payload | 自动回 fastboot |
+| 未压缩内核 + payload | 自动回 fastboot |
+| 未压缩内核，无 payload | 自动回 fastboot |
+| 完整四段 DTB 代替首段 DTB | 自动回 fastboot |
+| **对照：Project-Aloha 预编译镜像** | **正常启动，屏幕刷出 UEFI 代码** |
+| UEFI 栈从 G8X 的 `0xA0300000` 挪到映射内的 `0x9FFB0000` | 自动回 fastboot |
+| 换成 Aloha 的 G8 原生驱动包（弃用借来的 G8X 包） | 自动回 fastboot |
+| **混合：Aloha 的 shim + 我们编的 FD** | 自动回 fastboot |
+
+两个关键结论：
+
+1. **手机和刷写通路都是好的** —— 对照组每次都能启动到 UEFI。
+2. **问题在 FV 内部，不在 shim、不在 payload、不在 DTB、不在内核编码** ——
+   混合镜像（已知能启动的 shim 配我们的 FD）同样失败，把范围彻底钉在 FV 上。
+
+结构性对比（本地解析）：两边 FV 都合法（`_FVH`、3 MiB、header 长度 72），
+但**第一个 FFS 模块（type 0x03，SEC/PEI core）的 GUID 不同**：
+
+```
+aloha  3e401783-94cc-cd4f-97bc-bd35ac369d2f
+ours   9affb503-e643-4141-8b90-17e8588b1d35
+```
+
+这意味着两边早期引导模块不是同一个构建产物，而我们没有串口/调试输出能看到它死在哪一步。
+
+**这一轮到此为止**：继续换零件属于盲调，收益低于成本。手机已刷回 Magisk 备份的
+`boot_a`，可正常回到 Android。
+
+## 8. 下一步（按性价比排序）
+
+1. **改用 Project-Aloha 自己的构建系统产出 FV**。他们的发布产物在本机实测能启动，
+   说明那套 `build_setup.sh` + Dockerfile + 他们的 lg-alpha 设备目录是自洽的；
+   `uefi-sheng` 那条路虽然能编出 3 MiB 的 FD，但早期模块组合显然不对。
+   拿到能启动的 FV 之后，再把 UniXNU 的 `DarwinBoot` 与 payload 注入进去。
+2. **先拿到串口输出再谈调 FV**。Mu 在 AARCH64 上可以在 PEI 早期就把日志写到一个固定的
+   RAM 缓冲；没有串口时至少可以用「崩溃后由 abl 保留的内存」或测试点 UART，
+   否则任何修复都只是猜。
+3. 若 1 顺利，再回来解决 payload 的加载方式（FV 内嵌 512 KiB FAT12 或 disk 模式）。
