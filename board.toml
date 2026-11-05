@@ -33,6 +33,7 @@ packages = [
   "{uefi}",
   "{uefi}/Silicon/Qualcomm",
   "{uefi}/Silicon/Silicium",
+  "{uefi}/Platforms/LG",
   "{uefi}/Silicium-ACPI/Platforms/LG",
   "{tree}/package",
   "{tree}/drivers/DarwinBoot",
