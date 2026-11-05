@@ -87,7 +87,11 @@ jobs:
         run: |
           curl -fsSL -o android-alpha.dtb \
             https://raw.githubusercontent.com/Project-Aloha/mu_aloha_platforms/main/Platforms/SurfaceDuo1Pkg/Device/lg-alpha/DeviceTreeBlob/Android/android-alpha.dtb
-          ls -l android-alpha.dtb
+          # The published file is four concatenated DTBs (1,974,927 bytes, first
+          # header says totalsize 499,866), which `unixnu bootimg` rejects as an
+          # invalid compiled tree. Keep the first one, the base SM8150 tree.
+          python3 -c "import struct;d=open('android-alpha.dtb','rb').read();n=struct.unpack_from('>I',d,4)[0];open('alpha-first.dtb','wb').write(d[:n]);print('first dtb',n,'of',len(d))"
+          ls -l android-alpha.dtb alpha-first.dtb
 
       - name: Install host tools
         run: |
@@ -137,7 +141,7 @@ jobs:
           set -o pipefail
           cd unixnu
           FD=$(find "$GITHUB_WORKSPACE/uefi/Build" -name '*EFI.fd' -o -name '*.fd' | head -1)
-          DTB="$GITHUB_WORKSPACE/android-alpha.dtb"
+          DTB="$GITHUB_WORKSPACE/alpha-first.dtb"
           echo "fd=$FD"
           echo "dtb=$DTB"
           test -n "$FD"
