@@ -45,12 +45,19 @@ jobs:
           test -f unixnu/patches/xnu/zzzz-alphaplus-early-boot-probes.patch
           git -C unixnu log --oneline -1
 
-      - name: Check out Mu-Silicium (Project-Aloha) for this phone
+      - name: Check out the Mu-Silicium fork UniXNU builds on (uefi-sheng)
         run: |
-          git clone --quiet --depth 1 https://github.com/Project-Aloha/mu_aloha_platforms.git uefi
-          git -C uefi submodule update --init --depth 1
+          git clone --quiet --depth 1 https://github.com/UniXNU/uefi-sheng.git uefi
           du -sh uefi
-          ls uefi/Platforms/SurfaceDuo1Pkg/Device/lg-alpha
+          ls uefi/Resources/Configs | head
+          cp device/firmware/alphaplus.toml uefi/Resources/Configs/alphaplus.toml
+          cat uefi/Resources/Configs/alphaplus.toml
+
+      - name: Fetch the phone device tree (Project-Aloha lg-alpha)
+        run: |
+          curl -fsSL -o android-alpha.dtb \
+            https://raw.githubusercontent.com/Project-Aloha/mu_aloha_platforms/main/Platforms/SurfaceDuo1Pkg/Device/lg-alpha/DeviceTreeBlob/Android/android-alpha.dtb
+          ls -l android-alpha.dtb
 
       - name: Install host tools
         run: |
@@ -93,8 +100,8 @@ jobs:
       - name: Pack the boot image
         run: |
           cd unixnu
-          FD=$(find "$GITHUB_WORKSPACE/uefi/Build" -name '*EFI.fd' | head -1)
-          DTB="$GITHUB_WORKSPACE/uefi/Platforms/SurfaceDuo1Pkg/Device/lg-alpha/DeviceTreeBlob/Android/android-alpha.dtb"
+          FD=$(find "$GITHUB_WORKSPACE/uefi/Build" -name '*EFI.fd' -o -name '*.fd' | head -1)
+          DTB="$GITHUB_WORKSPACE/android-alpha.dtb"
           echo "fd=$FD"
           echo "dtb=$DTB"
           test -n "$FD"
