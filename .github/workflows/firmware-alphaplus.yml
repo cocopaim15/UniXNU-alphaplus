@@ -48,10 +48,18 @@ jobs:
       - name: Check out the Mu-Silicium fork UniXNU builds on (uefi-sheng)
         run: |
           git clone --quiet --depth 1 https://github.com/UniXNU/uefi-sheng.git uefi
-          du -sh uefi
-          ls uefi/Resources/Configs | head
+          git -C uefi submodule update --init --depth 1 -- \
+            Binaries Common/Mu Common/Mu_OEM_Sample Mu_Basecore Silicium-ACPI \
+            Silicon/Silicium/OpensslPkg/Library/OpensslLib/openssl
+          # overlay: the platform package and the ACPI tables this phone needs.
+          # Copy the two trees, not firmware/uefi/. wholesale -- that would drop
+          # our README over the checkout's own.
+          cp -rv device/firmware/uefi/Platforms/. uefi/Platforms/
+          cp -rv device/firmware/uefi/Silicium-ACPI/. uefi/Silicium-ACPI/
           cp device/firmware/alphaplus.toml uefi/Resources/Configs/alphaplus.toml
           cat uefi/Resources/Configs/alphaplus.toml
+          ls uefi/Platforms/LG/alphaplusPkg
+          ls uefi/Silicium-ACPI/Platforms/LG/alphaplus
 
       - name: Fetch the phone device tree (Project-Aloha lg-alpha)
         run: |
@@ -87,6 +95,7 @@ jobs:
 
       - name: Build the firmware volume
         run: |
+          set -o pipefail
           cd unixnu
           python3 unixnu firmware -D "$GITHUB_WORKSPACE/device" \
             --uefi "$GITHUB_WORKSPACE/uefi" \
@@ -99,6 +108,7 @@ jobs:
 
       - name: Pack the boot image
         run: |
+          set -o pipefail
           cd unixnu
           FD=$(find "$GITHUB_WORKSPACE/uefi/Build" -name '*EFI.fd' -o -name '*.fd' | head -1)
           DTB="$GITHUB_WORKSPACE/android-alpha.dtb"

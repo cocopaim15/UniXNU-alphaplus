@@ -1,8 +1,7 @@
 # LG G8 ThinQ (alphaplus / alphalm, SM8150) device repository for UniXNU.
 #
-# 状态：P1 —— 设备仓库骨架。板级值大部分沿用 mh2lm（同 SoC、同 LG 平台），
-# 可从 lg-alpha 的 UEFI 内存映射直接确认的已标注「已确认」，其余为 TODO(verify)。
-# 参照：shenli99/UniXNU-mh2lm（format 1，iOS 16 路线）。
+# 状态：P2 —— 设备仓库 + 平台包骨架。板级值已用本机 DTB / live FDT / lg-alpha
+# 内存映射逐项确认；固件平台包仍在施工中，见 firmware/uefi/README.md。
 #
 # 为什么不用 format 2：iOS 16.7.x 需要 xnu-8796，format 2 的 OS profile 前提
 # 对 iOS 16 不成立，见 DEVIATIONS.md。
@@ -14,42 +13,32 @@ description = "LG G8 ThinQ (LM-G820, alphalm)"
 kit = "alphaplus"
 
 [firmware]
-# 固件不由 unixnu 构建：用 Project-Aloha 的 mu_aloha_platforms（设备目录 lg-alpha）。
+# 固件由 UniXNU 的 uefi-sheng 检出构建；本仓库的 firmware/uefi/ 作为 overlay
+# 在构建前覆盖进去（平台包 + ACPI 表）。
 config = "alphaplus"
-dsc = "Platforms/SurfaceDuo1Pkg/SurfaceDuo1.dsc"
-fd = "Build/SurfaceDuo1Pkg/{target}_CLANGPDB/FV/SM8150_EFI.fd"
+dsc = "Platforms/LG/alphaplusPkg/alphaplus.dsc"
+fd = "Build/alphaplusPkg/{target}_CLANGPDB/FV/SILICIUM_UEFI.fd"
+# uefi-sheng 自己的 submodule 名，和 mu_aloha_platforms 不同。
 submodules = [
-  "MU_BASECORE",
-  "Common/MU",
-  "Common/MU_OEM_SAMPLE",
-  "Features/DFCI",
-  "Features/CONFIG",
   "Binaries",
-  "Platforms/OpensslPkg/Library/OpensslLib/openssl",
+  "Common/Mu",
+  "Common/Mu_OEM_Sample",
+  "Mu_Basecore",
+  "Silicium-ACPI",
+  "Silicon/Silicium/OpensslPkg/Library/OpensslLib/openssl",
 ]
+# {uefi}/Silicium-ACPI/Platforms/LG 让 alphaplus.dsc 里的
+# `alphaplus/AcpiTables.inf` 组件能被解析。
 packages = [
-  "{uefi}/Platforms",
-  "{uefi}/Common/MU",
-  "{uefi}/Common/MU_OEM_SAMPLE",
-  "{uefi}/Features/DFCI",
-  "{uefi}/Features/CONFIG",
-  "{uefi}/Binaries",
-  "{uefi}/Silicon/QC/Sm8150",
+  "{uefi}",
+  "{uefi}/Silicium-ACPI/Platforms/LG",
   "{tree}/package",
   "{tree}/drivers/DarwinBoot",
   "{edk2}",
 ]
 
 [firmware.defines]
-# Project-Aloha 的设备目录名是 lg-alpha（覆盖 alphaplus / alphalm 全部 G8 ThinQ）。
-TARGET_DEVICE = "lg-alphaplus"
-# TODO(verify): mu_aloha_platforms 里给的是 DeviceTreeBlob/Android/android-alpha.dtb，
-# 构建时的 FDT 名字要以 lg-alpha 的 package 为准。
-FDT = "android-alpha.dtb"
-SHARED_CRYPTO_PATH = "{workspace}/workarounds/crypto-stub"
-CONF_AUTOGEN_INCLUDE_PATH = "{uefi}/Platforms/SurfaceDuoFamilyPkg/Include"
-MU_SCHEMA_DIR = "{uefi}/Platforms/SurfaceDuoFamilyPkg/CfgData"
-MU_SCHEMA_FILE_NAME = "SurfaceDuoFamilyPkgCfgData.xml"
+DEVICE_MODEL = "alphaplus"
 
 [ipsw]
 # iPhone X（iPhone10,3 / D22AP），iOS 16.7.16 —— iPhone X 支持的最后一个版本。
@@ -64,7 +53,7 @@ board_id = 6
 fetch = ["KernelCache", "DeviceTree"]
 
 [ipsw.sha256]
-# 与 mh2lm 同一份 IPSW，校验值通用。
+# 已在本机核对：两个文件的 sha256 与下列值逐位一致。
 "kernelcache.release.iphone10b" = "2d6a13d040aaf87cec09bb6906d43e9bd8cea951e43d1aa1cd62707dfdc5aaec"
 "DeviceTree.d22ap.im4p" = "480e8b0888949b4128b7aa2cd254497581c69e1bafa596a760b2fa955a8a6368"
 

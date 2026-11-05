@@ -17,7 +17,8 @@
 ################################################################################
 [Defines]
   PLATFORM_NAME                  = alphaplus
-  PLATFORM_GUID                  = 410E0BBA-7EB7-4496-887B-061CD573D974
+  # Distinct from mh2Pkg so both packages can coexist in one build tree.
+  PLATFORM_GUID                  = 7C1E4A52-3B9D-4E77-9F2A-5D8C1B7E4A10
   PLATFORM_VERSION               = 0.1
   DSC_SPECIFICATION              = 0x00010005
   OUTPUT_DIRECTORY               = Build/alphaplusPkg
@@ -52,16 +53,16 @@
   # SMBIOS
   #
   gSiliciumPkgTokenSpaceGuid.PcdSmbiosSystemManufacturer|"LG"
-  gSiliciumPkgTokenSpaceGuid.PcdSmbiosSystemModel|"G8x ThinQ"
+  gSiliciumPkgTokenSpaceGuid.PcdSmbiosSystemModel|"G8 ThinQ"
   gSiliciumPkgTokenSpaceGuid.PcdSmbiosSystemRetailModel|"alphaplus"
-  gSiliciumPkgTokenSpaceGuid.PcdSmbiosSystemRetailSku|"LM-G850EMW"
-  gSiliciumPkgTokenSpaceGuid.PcdSmbiosSystemBoardModel|"alphapluslm"
+  gSiliciumPkgTokenSpaceGuid.PcdSmbiosSystemRetailSku|"LM-G820UM"
+  gSiliciumPkgTokenSpaceGuid.PcdSmbiosSystemBoardModel|"alphalm"
 
   #
   # Simple Frame Buffer
   #
-  gSiliciumPkgTokenSpaceGuid.PcdFrameBufferWidth|1080
-  gSiliciumPkgTokenSpaceGuid.PcdFrameBufferHeight|2340
+  gSiliciumPkgTokenSpaceGuid.PcdFrameBufferWidth|1440
+  gSiliciumPkgTokenSpaceGuid.PcdFrameBufferHeight|3120
   gSiliciumPkgTokenSpaceGuid.PcdFrameBufferColorDepth|32
 
   #
