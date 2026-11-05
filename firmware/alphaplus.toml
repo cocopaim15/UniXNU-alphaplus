@@ -18,7 +18,9 @@ size = 0x00300000
 # Android Boot Image Kernel Configs
 #
 [boot_image_kernel]
-kernel_compression = "gzip"
+# The working Project-Aloha image for this phone is uncompressed, and LG's abl
+# fell straight back to fastboot with a gzip kernel. Write the shim + FD raw.
+kernel_compression = "none"
 append_dtb         = true
 
 #
