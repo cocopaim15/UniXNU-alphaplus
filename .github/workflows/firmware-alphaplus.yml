@@ -67,7 +67,14 @@ jobs:
           # build and replace drivers as they prove wrong on the phone.
           test -d uefi/Binaries/mh2
           cp -r uefi/Binaries/mh2 uefi/Binaries/alphaplus
+          # The borrowed set carries G8X file names (BATTERY_MH2LM.PROVISION and
+          # friends); the platform package now asks for the alphaplus names.
+          find uefi/Binaries/alphaplus -type f | while read -r f; do
+            n=$(echo "$f" | sed 's/MH2LM/ALPHALM/g; s/mh2lm/alphalm/g; s/MH2/ALPHA/g; s/mh2/alphaplus/g')
+            if [ "$f" != "$n" ]; then mv "$f" "$n"; fi
+          done
           find uefi/Binaries/alphaplus -name '*.inf' | head -5
+          ls uefi/Binaries/alphaplus/RawFiles | head -10
           cp device/firmware/alphaplus.toml uefi/Resources/Configs/alphaplus.toml
           cat uefi/Resources/Configs/alphaplus.toml
           ls uefi/Platforms/LG/alphaplusPkg
