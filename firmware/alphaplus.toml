@@ -28,3 +28,8 @@ append_dtb         = true
 #
 [boot_image]
 header_version = 1
+# UniXNU's bootimg reads `kernel_compression` from [boot_image] (settings() in
+# scripts/unixnu/bootimg.py), not from [boot_image_kernel]; that section only
+# feeds the Mu build. LG's abl fell back to fastboot with the gzip kernel, so
+# write the BootShim + FD uncompressed.
+kernel_compression = "none"
