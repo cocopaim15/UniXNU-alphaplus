@@ -308,3 +308,63 @@ Platforms/LG/mh2/Decompiled/DSDT.dsl
 - 停在这里的理由：`MemoryMapLib` 的抽象与 Aloha 的不同（`EFI_MEMORY_REGION_DESCRIPTOR`
   vs `ARM_MEMORY_REGION_DESCRIPTOR_EX`），必须逐字段搬运；硬拼会得到能编译但内存映射错误的固件，
   而错误的内存映射在真机上表现为随机死机——比构建失败更难查。
+
+---
+
+## 5. 固件构建打通（2026-11-06 凌晨）
+
+把上面三处补完之后，固件在免费 CI 上一轮一轮往前拱，每次失败只暴露一个具体缺口。
+**这一节就是那九轮的真实顺序**，以后复现照这个清单走：
+
+| 轮 | 报错 | 修法 |
+| --- | --- | --- |
+| 1 | `uefi ... is not a Mu-Silicium checkout` | `--uefi` 要用 `UniXNU/uefi-sheng`，不是 Project-Aloha |
+| 2 | `pathspec 'MU_BASECORE' did not match` | submodule 名换成 uefi-sheng 的（`Mu_Basecore` / `Common/Mu` …） |
+| 3 | `lld-link not found on PATH` | `apt install lld clang llvm` |
+| 4 | `HanaPkg/HanaPkg.dsc.inc` 找不到 | PACKAGES_PATH 加 `{uefi}/Silicon/Qualcomm`、`{uefi}/Silicon/Silicium` |
+| 5 | `alphaplusPkg/alphaplus.fdf` 找不到 | 加 `{uefi}/Platforms/LG` |
+| 6 | `MsCorePkg/...` 找不到 | 加 `{uefi}/Common/Mu`、`Mu_Basecore`、`Common/Mu_OEM_Sample` |
+| 7 | `Binaries/alphaplus/QcomPkg/...` 找不到 | `Device-Binaries` 无 alphaplus，**借 G8X(mh2) 的驱动包**并改名 |
+| 8 | `Common/SSDT.aml`、`Hana/*.aml` 找不到 | 加 `{uefi}/Silicium-ACPI` 与 `{uefi}/Silicium-ACPI/Silicon/Qualcomm` |
+| 9 | `#if ENABLE_SECUREBOOT == 1` 预处理报错 | `[firmware.defines] ENABLE_SECUREBOOT = "0"` |
+
+修完第 9 轮后：**固件编出来了** —— `Build/alphaplusPkg/DEBUG_CLANGPDB/FV/SILICIUM_UEFI.fd`。
+
+接着补打包链：
+
+| 轮 | 报错 | 修法 |
+| --- | --- | --- |
+| 10 | `invalid compiled device tree` | Aloha 的 `android-alpha.dtb` 是**四段拼接**（文件 1,974,927 B，首段 totalsize 499,866），切出第一段 |
+| 11 | `the payload files take 19 MiB; raise size_mib (now 1)` | `[payload] size_mib = 32`（19 MiB 内核；1 MiB 是给 FV 内嵌场景的） |
+
+最终产物（run `42061796622`，全绿）：
+
+```
+boot-alphaplus.img   33.52 MB   magic ANDROID!
+  kernel   1,591,726 B @ 0x8000     (3 MiB UEFI FD，gzip)
+  ramdisk 33,554,432 B @ 0x800000   (32 MiB payload：kernel.macho + adt + unixnu.toml)
+  page 4096   sha256 0244AC60…66DD
+```
+
+对照之前成功启动过的 Aloha 镜像：`kernel_addr=0x8000`、`tags_addr=0x100`、`page=4096` 完全同类
+（Aloha 的 `ramdisk_addr=0x1000000`，我们 0x800000，同为低地址偏移量级）。
+
+**尚未在真机验证。** 刷写步骤见下一节。
+
+## 6. 待做：真机验证
+
+```sh
+# 手机：关机 → 按住音量下 → 插 USB
+fastboot devices
+fastboot flash boot_a boot-alphaplus.img
+# 长按电源 15 秒重启（该 abl 的 fastboot reboot 不生效）
+```
+
+回滚（`boot_a` 的备份已校验，magic `ANDROID!`，64 MB）：
+
+```sh
+fastboot flash boot_a magisk_patched-30600_mZhNS.img
+```
+
+看屏幕：出现 UniXNU 菜单 = 启动链打通；黑屏/循环则按 porting-log 第 2 节的坑位表逐项查
+（内存映射、FD 基址、DTB 变体、gzip 内核是否被 abl 解压）。
