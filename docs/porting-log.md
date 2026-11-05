@@ -215,6 +215,46 @@ fastboot --set-active=b  →  FAILED (remote: 'unknown command')
 - 结构性结论：**uefi-sheng 按机型分包**（`Platforms/LG/mh2Pkg/mh2.dsc` 等），
   `Resources/Configs/` 里也没有 alphaplus → 这台机没有平台包，固件无从构建。
 
+**H5 平台包底稿盘点（结论：零件都在，但分散在两套仓库里）**
+
+`uefi-sheng` 里 LG 目录只有一份：`Platforms/LG/mh2Pkg`。读它的 `mh2.dsc` 可以确认
+**它就是 LG G8X ThinQ**：
+
+```
+gSiliciumPkgTokenSpaceGuid.PcdSmbiosSystemModel|"G8x ThinQ"
+gSiliciumPkgTokenSpaceGuid.PcdSmbiosSystemRetailSku|"LM-G850EMW"
+gSiliciumPkgTokenSpaceGuid.PcdSmbiosSystemBoardModel|"mh2lm"
+```
+
+它的内存映射里 `Display Reserved` 同样是 `0x9D200000 + 0x01200000`，与 `lg-alpha` 一致；
+但三处必须改：
+
+| 项 | mh2（G8X） | alphaplus（G8） | 来源 |
+| --- | --- | --- | --- |
+| Kernel 段 | `0x80000000 + 0x00600000` | `0x80000000 + 0x02A00000` | lg-alpha MemoryMapLib |
+| UEFI FD | `0xA0000000 + 0x00300000` | `0x9FC00000 + 0x00300000` | 同上 |
+| 面板 | 1080 × 2340 | 1440 × 3120 | 硬件规格 |
+
+`mh2Pkg` 只有 11 个文件（`dsc` / `fdf` / `dec` / `DeviceBuild.py` / `Include/*.inc` /
+两个 Library），体量很小，克隆改造成本可控。
+
+但它引用 `mh2/AcpiTables.inf`，该文件不在 uefi-sheng 里，而在 submodule
+`Project-Silicium/Silicium-ACPI` 中：
+
+```
+Platforms/LG/mh2/AcpiTables.inf
+Platforms/LG/mh2/DSDT.aml
+Platforms/LG/mh2/Decompiled/DSDT.dsl
+```
+
+该仓库的 LG 目录**只有 mh2**，没有 alpha。也就是说 alphaplus 缺的是 **ACPI 表（DSDT）**，
+不是几行配置。
+
+好消息：Project-Aloha 的 `mu_aloha_platforms` 里**存在**
+`Platforms/SurfaceDuo1Pkg/Device/lg-alpha/ACPI/DSDT.aml`。所以可用零件是齐的，
+只是分布在两套结构不同的仓库里（Aloha 的 `Device/<name>` vs uefi-sheng 的
+`Platforms/<Vendor>/<name>Pkg` + `Silicium-ACPI/Platforms/<Vendor>/<name>`）。
+
 ---
 
 ## 2. 坑位速查
@@ -239,9 +279,18 @@ fastboot --set-active=b  →  FAILED (remote: 'unknown command')
 
 ## 3. 下一步（按依赖排序）
 
-1. 在 `uefi-sheng` 里新建 `Platforms/LG/alphaplusPkg`：从 `mh2Pkg` 克隆 `dsc`/`fdf`/include，
-   把 FD 基址改成 `0x9FC00000`、大小 `0x00300000`（来自 `lg-alpha` 的 `PlatformMemoryMapLib`）。
-2. `Resources/Configs/alphaplus.toml` 已有草稿（`firmware/alphaplus.toml`）。
-3. 修正 `board.toml` 的 `[firmware] submodules` 为 uefi-sheng 的实际名称。
-4. 固件构建成功后用 `unixnu bootimg` 打包，`fastboot flash boot_a` 验证。
-5. 只有到第 4 步才需要手机进 fastboot。
+1. 新建 `Platforms/LG/alphaplusPkg`：从 `mh2Pkg` 复制 11 个文件，改
+   `PLATFORM_NAME` / `PLATFORM_GUID` / `OUTPUT_DIRECTORY` / `FLASH_DEFINITION` /
+   SMBIOS 串 / 面板分辨率；`MemoryMapLib.c` 的 Kernel 段与 UEFI FD 段按上表改。
+2. 新建 `Silicium-ACPI/Platforms/LG/alphaplus/`：`AcpiTables.inf` 从 `mh2` 抄，
+   `DSDT.aml` 取自 Aloha 的 `Device/lg-alpha/ACPI/DSDT.aml`。
+3. `Resources/Configs/alphaplus.toml` 已有草稿（本仓库 `firmware/alphaplus.toml`，
+   FD base 已按 `0x9FC00000` 填好）。
+4. 修正 `board.toml` 的 `[firmware]`：`dsc` 指向 `alphaplusPkg/alphaplus.dsc`，
+   `submodules` 换成 uefi-sheng 的实际名称（`Mu_Basecore` / `Common/Mu` / …），
+   `fd` 换成 `Build/alphaplusPkg/{target}_CLANGPDB/FV/*.fd`。
+5. 固件构建成功后用 `unixnu bootimg` 打包，`fastboot flash boot_a` 验证。
+6. 只有到第 5 步才需要手机进 fastboot。
+
+判断：第 1–4 步是**有底稿的移植工作**（不是配置微调），每步都能在免费 CI 上跑通再前进；
+第 5 步才回到手机上。
