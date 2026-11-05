@@ -61,6 +61,13 @@ jobs:
           curl -fsSL -o uefi/Silicium-ACPI/Platforms/LG/alphaplus/DSDT.aml \
             https://raw.githubusercontent.com/Project-Aloha/mu_aloha_platforms/main/Platforms/SurfaceDuo1Pkg/Device/lg-alpha/ACPI/DSDT.aml
           ls -l uefi/Silicium-ACPI/Platforms/LG/alphaplus/
+          # The DSC resolves vendor UEFI drivers as `alphaplus/QcomPkg/...` inside
+          # the Device-Binaries checkout. There is no alphaplus set upstream; the
+          # G8X (mh2) set is the closest LG SM8150 package, so use it for the first
+          # build and replace drivers as they prove wrong on the phone.
+          test -d uefi/Binaries/mh2
+          cp -r uefi/Binaries/mh2 uefi/Binaries/alphaplus
+          find uefi/Binaries/alphaplus -name '*.inf' | head -5
           cp device/firmware/alphaplus.toml uefi/Resources/Configs/alphaplus.toml
           cat uefi/Resources/Configs/alphaplus.toml
           ls uefi/Platforms/LG/alphaplusPkg
