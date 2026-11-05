@@ -51,6 +51,9 @@ jobs:
           git -C uefi submodule update --init --depth 1 -- \
             Binaries Common/Mu Common/Mu_OEM_Sample Mu_Basecore Silicium-ACPI \
             Silicon/Silicium/OpensslPkg/Library/OpensslLib/openssl
+          # Mu_Basecore carries nested submodules (brotli, libspdm, mipisyst,
+          # libfdt); MdePkg.dec resolves paths into them.
+          git -C uefi/Mu_Basecore submodule update --init --depth 1 --recursive --jobs 4
           # overlay: the platform package and the ACPI tables this phone needs.
           # Copy the two trees, not firmware/uefi/. wholesale -- that would drop
           # our README over the checkout's own.
