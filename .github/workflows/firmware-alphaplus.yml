@@ -56,6 +56,11 @@ jobs:
           # our README over the checkout's own.
           cp -rv device/firmware/uefi/Platforms/. uefi/Platforms/
           cp -rv device/firmware/uefi/Silicium-ACPI/. uefi/Silicium-ACPI/
+          # The DSDT is vendor-firmware derived and is not kept in this repository;
+          # it comes from Project-Aloha's public lg-alpha tree at build time.
+          curl -fsSL -o uefi/Silicium-ACPI/Platforms/LG/alphaplus/DSDT.aml \
+            https://raw.githubusercontent.com/Project-Aloha/mu_aloha_platforms/main/Platforms/SurfaceDuo1Pkg/Device/lg-alpha/ACPI/DSDT.aml
+          ls -l uefi/Silicium-ACPI/Platforms/LG/alphaplus/
           cp device/firmware/alphaplus.toml uefi/Resources/Configs/alphaplus.toml
           cat uefi/Resources/Configs/alphaplus.toml
           ls uefi/Platforms/LG/alphaplusPkg

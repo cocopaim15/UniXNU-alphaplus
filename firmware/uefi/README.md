@@ -6,6 +6,7 @@
 | 路径 | 作用 |
 | --- | --- |
 | `Platforms/LG/alphaplusPkg/` | 平台包（DSC/FDF/Include/两个 Library） |
+| `Silicium-ACPI/Platforms/LG/alphaplus/AcpiTables.inf` | ACPI 表清单；`DSDT.aml` 不入库，构建时从 Aloha 拉 |
 | `../alphaplus.toml` | 对应 `uefi-sheng/Resources/Configs/alphaplus.toml` |
 
 ## 现状：骨架，未验证

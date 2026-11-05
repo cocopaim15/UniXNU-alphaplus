@@ -23,6 +23,7 @@ scripts/base-*.adt
 # Dumped firmware and partition images
 *.img
 *.dtb
+*.aml
 fw-*/
 
 # Editor / OS noise
