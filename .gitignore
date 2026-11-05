@@ -1,0 +1,30 @@
+# Build output
+out/
+build/
+*.o
+*.d
+*.log
+
+# Local overrides
+local.toml
+unixnu.local.toml
+
+# Tool caches
+__pycache__/
+*.pyc
+.cache/
+
+# Apple products: never committed, extracted locally from an IPSW
+*.ipsw
+kernelcache*
+DeviceTree.*.im4p
+scripts/base-*.adt
+
+# Dumped firmware and partition images
+*.img
+*.dtb
+fw-*/
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db

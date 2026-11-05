@@ -1,0 +1,13 @@
+# 复制成 local.toml（已被 .gitignore 忽略），按需指向本机目录；每个条目对应一个模块。
+# 也可以都用命令行参数 --local / --local-drivers 代替这个文件。
+[local]
+# drivers = "~/src/drivers"
+# kits    = "~/src/kits"
+
+# 构建输入（IPSW、UEFI、DTB 等）写在这里，或写在 UniXNU 检出目录的 unixnu.local.toml。
+# 字段说明：https://unixnu.com/reference/configuration#local-build-inputs
+# 本项目的实际路径：
+#   device   = "../UniXNU-alphaplus"
+#   uefi     = "../../ref/aloha-alpha"          # mu_aloha_platforms 的检出
+#   dtb      = "<uefi-checkout>/Platforms/SurfaceDuo1Pkg/Device/lg-alpha/DeviceTreeBlob/Android/android-alpha.dtb"
+#   ipsw     = "~/work/ipsw/iPhone10,3,iPhone10,6_16.7.16_20H392_Restore.ipsw"

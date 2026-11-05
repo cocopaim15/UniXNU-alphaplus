@@ -1,0 +1,126 @@
+# LG G8 ThinQ (alphaplus / alphalm, SM8150) device repository for UniXNU.
+#
+# 状态：P1 —— 设备仓库骨架。板级值大部分沿用 mh2lm（同 SoC、同 LG 平台），
+# 可从 lg-alpha 的 UEFI 内存映射直接确认的已标注「已确认」，其余为 TODO(verify)。
+# 参照：shenli99/UniXNU-mh2lm（format 1，iOS 16 路线）。
+#
+# 为什么不用 format 2：iOS 16.7.x 需要 xnu-8796，format 2 的 OS profile 前提
+# 对 iOS 16 不成立，见 DEVIATIONS.md。
+
+[board]
+name = "alphaplus"
+soc = "SM8150"
+description = "LG G8 ThinQ (LM-G820, alphalm)"
+kit = "alphaplus"
+
+[firmware]
+# 固件不由 unixnu 构建：用 Project-Aloha 的 mu_aloha_platforms（设备目录 lg-alpha）。
+config = "alphaplus"
+dsc = "Platforms/SurfaceDuo1Pkg/SurfaceDuo1.dsc"
+fd = "Build/SurfaceDuo1Pkg/{target}_CLANGPDB/FV/SM8150_EFI.fd"
+submodules = [
+  "MU_BASECORE",
+  "Common/MU",
+  "Common/MU_OEM_SAMPLE",
+  "Features/DFCI",
+  "Features/CONFIG",
+  "Binaries",
+  "Platforms/OpensslPkg/Library/OpensslLib/openssl",
+]
+packages = [
+  "{uefi}/Platforms",
+  "{uefi}/Common/MU",
+  "{uefi}/Common/MU_OEM_SAMPLE",
+  "{uefi}/Features/DFCI",
+  "{uefi}/Features/CONFIG",
+  "{uefi}/Binaries",
+  "{uefi}/Silicon/QC/Sm8150",
+  "{tree}/package",
+  "{tree}/drivers/DarwinBoot",
+  "{edk2}",
+]
+
+[firmware.defines]
+# Project-Aloha 的设备目录名是 lg-alpha（覆盖 alphaplus / alphalm 全部 G8 ThinQ）。
+TARGET_DEVICE = "lg-alphaplus"
+# TODO(verify): mu_aloha_platforms 里给的是 DeviceTreeBlob/Android/android-alpha.dtb，
+# 构建时的 FDT 名字要以 lg-alpha 的 package 为准。
+FDT = "android-alpha.dtb"
+SHARED_CRYPTO_PATH = "{workspace}/workarounds/crypto-stub"
+CONF_AUTOGEN_INCLUDE_PATH = "{uefi}/Platforms/SurfaceDuoFamilyPkg/Include"
+MU_SCHEMA_DIR = "{uefi}/Platforms/SurfaceDuoFamilyPkg/CfgData"
+MU_SCHEMA_FILE_NAME = "SurfaceDuoFamilyPkgCfgData.xml"
+
+[ipsw]
+# iPhone X（iPhone10,3 / D22AP），iOS 16.7.16 —— iPhone X 支持的最后一个版本。
+url = "https://updates.cdn-apple.com/2025FallFCS/fullrestores/122-77006/1158E502-D76D-4226-AA06-ED5E30CD1111/iPhone10,3,iPhone10,6_16.7.16_20H392_Restore.ipsw"
+product = "iPhone10,3"
+version = "16.7.16"
+build = "20H392"
+device_class = "d22ap"
+# t8015 (A11) / cpid 32789 = 0x8015；board_id 6（D22）。
+chip_id = 0x8015
+board_id = 6
+fetch = ["KernelCache", "DeviceTree"]
+
+[ipsw.sha256]
+# 与 mh2lm 同一份 IPSW，校验值通用。
+"kernelcache.release.iphone10b" = "2d6a13d040aaf87cec09bb6906d43e9bd8cea951e43d1aa1cd62707dfdc5aaec"
+"DeviceTree.d22ap.im4p" = "480e8b0888949b4128b7aa2cd254497581c69e1bafa596a760b2fa955a8a6368"
+
+[kernel]
+defconfig = "alphaplus_defconfig"
+# 归档方式构建的模块：corecrypto / pthread / ARM DT 平台 / ARMCPU。
+archives = [
+  "build-corecrypto-14.py",
+  "build-corecrypto-14.py --namespace",
+  "build-arm-driver.py ArmDTPlatform",
+  "build-arm-driver.py ArmCpu",
+  "build-libpthread-kernel.py",
+]
+
+[os]
+# iPhone X / iOS 16.7.x 用户态 = Darwin 22.6.0 / xnu-8796
+xnu_version = "8796.141.3"
+xnu_revision = "1b191cb58250d0705d8a51287127505aa4bc0789"
+darwin = "22.6.0"
+
+[payload]
+volume = "ALPHASP"
+# FV 里的 payload 分区是 512 KiB FAT12（B1 手工步骤），这个 size_mib 只喂给
+# `unixnu payload`，它会写整 MiB 的 FAT32，两者不是一回事。
+size_mib = 1
+loader = "firmware"
+tools = true
+title = "LG G8 - XNU"
+# 机器实际 6 GB（ro.boot.product.lge.ddr_size = 6387924992），这里先按 3 GB
+# 给 OS 一个安全子集，与 mh2lm 一致。
+dram_size = "0xc0000000"
+panic_screen = false
+timeout = 3
+# TODO(verify): serial=3 沿自 guacamole，LG 平台的 UART 编号未在真机确认。
+kernel_args = [
+  "debug=0xc",
+  "serial=3",
+  "cpus=8",
+  "keepsyms=1",
+  "rd=ufsroot0",
+  "wdt=-1",
+]
+
+[payload.adt]
+tool = "scripts/make-alphaplus-adt.py"
+# LG 的 ECID 一般不在 getvar 里，保留 optional。
+unique_chip_id = "optional"
+owned_memory_size = "0xc0000000"
+
+[bootimg.image]
+base = 0x0
+kernel_offset = 0x8000
+# lg-alpha 的 PlatformMemoryMapLib 里 "Kernel" 段是 0x80000000 + 0x02A00000
+# （42 MiB，已确认），比 mh2lm 的 6 MiB 宽松；ramdisk 放在 8 MiB 处。
+ramdisk_offset = 0x800000
+abl_base = 0x80000000
+tags_offset = 0x100
+pagesize = 4096
+header_version = 0

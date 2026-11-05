@@ -1,0 +1,205 @@
+name: kernel-8796
+
+# 在 macOS runner 上编 xnu-8796 内核，步骤照 UniXNU 官方 .github/workflows/macos.yml：
+#   检出 → 工具 → defconfig → ./unixnu build kernel → 收集。
+# 与官方的差别只有三处：
+#   1. macos-14 + 最老的 Xcode 15：iig 的输出跟 Xcode 世代绑定，新 iig 生成 IORPC.kernelContent，8796 没有这个字段
+#      （cepheus 的 8796 CI 也钉在这里）。
+#   2. UniXNU 钉在 UNIXNU_SHA，再打 ci/0019-unixnu-8796-ci.patch。它改的是 UniXNU 自己（feeds.toml 钉 8796、
+#      patches/xnu/ 的增删改、kernel.py 的 8796 回退），XNU 源码补丁仍由 build kernel 按文件名顺序自动应用。
+#      早期启动探针也在里面：patches/xnu/zzzz-alphaplus-early-boot-probes.patch（zzzz 保证最后应用）。
+#   3. 上传内核、日志和重新链接用的目标文件。官方 CI 只传 *.log，因为内核派生自 Apple 软件；
+#      这里的 artifact 只保留 7 天，仓库公开时任何登录用户都能下载，注意这一点。
+#
+# 设备仓库不能有 patches/xnu/ 目录：format 1 下同名模块设备仓库优先，它会整个替换 UniXNU 的 patches/xnu/。
+#
+# prelink 会失败（预期）：board.toml 没有 [kernel.prelink]。内核在 prelink 之前已经链接好，
+# 位置是 tree/build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/mach.development.bcm2837.unstripped。
+
+on:
+  workflow_dispatch:
+    inputs:
+      jobs:
+        description: "并行 job 数（macos-14 标准 runner 是 3 核）"
+        default: "3"
+      unixnu_sha:
+        description: "UniXNU 提交（ci/0019 是对着它做的）"
+        default: "40d21cc65171c3a24faa130a2a8e899f85790485"
+
+permissions:
+  contents: read
+
+env:
+  HOMEBREW_NO_AUTO_UPDATE: 1
+  HOMEBREW_NO_INSTALL_CLEANUP: 1
+  HOMEBREW_NO_ENV_HINTS: 1
+  # dSYM 对 payload 没用，关掉省时间和磁盘
+  MAKEFLAGS: "BUILD_DSYM=0"
+  UNIXNU_SHA: ${{ inputs.unixnu_sha }}
+  JOBS: ${{ inputs.jobs }}
+  UNIXNU_DEVICE: ${{ github.workspace }}/device
+  DEFCONFIG: alphaplus_defconfig
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  kernel:
+    runs-on: macos-14
+    timeout-minutes: 350
+    env:
+      # format 1 的输出目录是 out/<board>
+      WORK: ${{ github.workspace }}/unixnu/out/alphaplus
+      OBJ: ${{ github.workspace }}/unixnu/out/alphaplus/tree/build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837
+    steps:
+      - name: Check out the device repository
+        uses: actions/checkout@v4
+        with:
+          path: device
+          persist-credentials: false
+
+      - name: Check out UniXNU (pinned) and apply ci/0019
+        run: |
+          git clone --filter=blob:none https://github.com/UniXNU/UniXNU.git unixnu
+          git -C unixnu checkout -q "$UNIXNU_SHA"
+          git -C unixnu log --oneline -1
+          git -C unixnu apply "$GITHUB_WORKSPACE/device/ci/0019-unixnu-8796-ci.patch"
+          grep -n 'xnu-8796' unixnu/feeds.toml
+          test -f unixnu/patches/xnu/zzzz-alphaplus-early-boot-probes.patch
+          if [ -d device/patches/xnu ]; then
+            echo "::error::device/patches/xnu would replace UniXNU's patches/xnu (format 1 module override)"
+            exit 1
+          fi
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Select Xcode 15
+        run: |
+          XC=$(ls -d /Applications/Xcode_15*.app 2>/dev/null | sort -V | head -1)
+          [ -n "$XC" ] || { echo "::error::no Xcode 15 on this image: $(ls -d /Applications/Xcode*.app)"; exit 1; }
+          echo "DEVELOPER_DIR=$XC/Contents/Developer" >> "$GITHUB_ENV"
+          echo "picked: $XC"
+
+      - name: Install host tools
+        run: |
+          # 同官方：Homebrew LLVM 是 keg-only，不进 PATH，驱动程序自己给 archive builder 找它；
+          # 其余全部用 Xcode 的 clang。
+          brew install llvm lld
+          if ! command -v unifdef >/dev/null; then
+            brew install unifdef
+            echo "$(brew --prefix unifdef)/bin" >> "$GITHUB_PATH"
+          fi
+
+      - name: Report the runner toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          xcrun --find iig
+          clang --version | head -n 1
+          "$(brew --prefix llvm)/bin/clang" --version | head -n 1
+          python3 --version
+          missing=0
+          for tool in git make clang cmake ninja unifdef xcodebuild; do
+            path=$(command -v "$tool" || true)
+            printf '%-10s %s\n' "$tool" "${path:-MISSING}"
+            [ -n "$path" ] || missing=1
+          done
+          df -h "$GITHUB_WORKSPACE"
+          exit "$missing"
+
+      - name: Defconfig and status
+        working-directory: unixnu
+        run: |
+          ./unixnu defconfig "$DEFCONFIG"
+          ./unixnu status
+
+      - name: Build kernel
+        id: kernel
+        working-directory: unixnu
+        env:
+          # prepare-xnu-source.py 用 GitHub API 列 Apple 源码，匿名调用会被限流（HTTP 403）
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          # 末尾 prelink 失败是预期的；内核是否链接出来由下一步判断
+          set +e
+          ./unixnu build kernel -j "$JOBS"
+          echo "unixnu exit: $?"
+          exit 0
+
+      - name: Check the kernel and the probes
+        working-directory: unixnu
+        run: |
+          start=out/alphaplus/tree/.cache/xnu-work/osfmk/arm64/start.s
+          echo "probe sites in start.s: $(grep -c 'ALPHA_PROBE_BAR x' "$start" || true) bars, $(grep -c '^	ALPHA_PROBE_RESET' "$start" || true) reset"
+          ls -l "$OBJ"/mach.* "$WORK"/kernel 2>/dev/null || true
+          test -f "$OBJ/mach.development.bcm2837.unstripped" || test -f "$OBJ/mach.development.bcm2837"
+
+      - name: Failure summary
+        if: always()
+        working-directory: unixnu
+        run: |
+          echo "=== build errors (first 15 per log) ==="
+          for f in "$WORK"/logs/*.log; do
+            [ -f "$f" ] || continue
+            hits=$(grep -anE " error: |Error 1$|Error 2$|No such file|No rule to make target|Undefined symbols|undefined symbol|ld: " "$f" | head -15 || true)
+            if [ -n "$hits" ]; then echo "--- $f"; echo "$hits"; fi
+          done
+          echo "=== tail of the most recent log ==="
+          last=$(ls -t "$WORK"/logs/*.log 2>/dev/null | head -1 || true)
+          [ -n "$last" ] && tail -40 "$last" || true
+      - name: Collect kernel, logs and the relink kit
+        if: always()
+        run: |
+          mkdir -p collect/kernel collect/logs collect/relink
+          # 1) 内核：链接产物，以及 prelink 若成功时的 kernel.macho
+          cp -p "$OBJ"/mach.development.bcm2837* collect/kernel/ 2>/dev/null || true
+          cp -pR "$WORK"/kernel/. collect/kernel/ 2>/dev/null || true
+          cp -p unixnu/out/alphaplus/tree/.cache/xnu-work/osfmk/arm64/start.s collect/kernel/start.s 2>/dev/null || true
+          # 2) 日志：kernel-bootstrap / archive-* / kernel-records / kernel.log 都在 logs/ 里
+          cp -p "$WORK"/logs/*.log collect/logs/ 2>/dev/null || true
+          git -C unixnu/out/alphaplus/tree/.cache/xnu-work diff --stat > collect/logs/xnu-work-diffstat.txt 2>/dev/null || true
+          # 3) 重新链接用的输入：link.filelist 里的全部 .o，链接规则里另外的 .o 和导出表，
+          #    .LDFLAGS（xnu 记下的 ld 命令与参数），以及 archive builder 产出的 .a
+          python3 - <<'PY'
+          import os, shutil
+          from pathlib import Path
+          tree = Path(os.environ['WORK']) / 'tree'
+          obj = Path(os.environ['OBJ'])
+          kit = Path('collect/relink')
+          def keep(path):
+              path = Path(path)
+              if not path.is_absolute():
+                  path = obj / path
+              if not path.is_file() or not path.is_relative_to(tree):
+                  return False
+              target = kit / 'tree' / path.relative_to(tree)
+              target.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copy2(path, target)
+              return True
+          filelist = obj / 'link.filelist'
+          listed = [line.strip() for line in filelist.read_text().splitlines() if line.strip()] if filelist.is_file() else []
+          copied = sum(keep(entry) for entry in listed)
+          for name in ('link.filelist', '.LDFLAGS', 'version.o', 'lastkerneldataconst.o', 'lastkernelconstructor.o',
+                       'nonlto.o', 'all-kpi.exp', 'all-alias.exp', 'symbolsets.plist'):
+              keep(obj / name)
+          # archive builder 的输出在 tree/build/<名字>/，libfirehose_kernel 等在 fakeroot 的 lib/kernel/
+          archives = [p for p in (tree / 'build').rglob('*.a') if p.relative_to(tree / 'build').parts[0] != 'xnu']
+          archives += sorted((tree / '.cache/fakeroot/usr/local/lib/kernel').glob('*.a'))
+          for path in archives:
+              keep(path)
+          (kit / 'ci-tree.txt').write_text(str(tree) + '\n')
+          print(f'link.filelist: {len(listed)} entries, {copied} copied; archives: {len(archives)}')
+          PY
+          du -sh collect/* || true
+
+      - name: Upload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-8796
+          path: collect/
+          retention-days: 7
+          if-no-files-found: warn

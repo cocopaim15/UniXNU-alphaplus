@@ -1,0 +1,7 @@
+# This repository is built on macOS and Linux runners; keep one line ending.
+* text=auto eol=lf
+
+*.patch text eol=lf
+*.py    text eol=lf
+*.toml  text eol=lf
+*.yml   text eol=lf

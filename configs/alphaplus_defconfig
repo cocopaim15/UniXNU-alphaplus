@@ -1,0 +1,20 @@
+# alphaplus (LG G8 ThinQ, SM8150) defconfig -- M3: kernel entry, print, minimal peripherals.
+# CONFIG_XNU_<NAME> is translated by the kernel scripts into XNU_<NAME> (y->1, n->0).
+CONFIG_XNU_SOURCE_CORECRYPTO14=y
+CONFIG_XNU_SOURCE_PTHREAD=y
+CONFIG_XNU_ARM_DT_PLATFORM=y
+CONFIG_XNU_ARMCPU=y
+CONFIG_XNU_CRYPTO_BOOTSTRAP="source"
+# M3 only needs the kernel to print; UFS/display/GPU come later at M4.
+# CONFIG_XNU_NATIVE_UFS is not set
+# CONFIG_XNU_NATIVE_AES is not set
+# CONFIG_XNU_NATIVE_RAM_BLOCK is not set
+# CONFIG_XNU_NATIVE_MOBILE_DISPLAY is not set
+CONFIG_XNU_NATIVE_ARCH_TIMER=y
+CONFIG_XNU_NATIVE_PAN=y
+CONFIG_XNU_DT_PANIC_REGION=y
+# CONFIG_XNU_TRUST_CACHE_RUNTIME is not set
+# trust_cache_runtime_init() panics without the AMFI/Image4 interfaces, which only the
+# prelinked kexts register; this source-only kernel has neither (2026-10-31 bisection).
+CONFIG_XNU_NATIVE_CS_HASH_CACHE=y
+CONFIG_XNU_BUILD_ARCHIVES=y

@@ -1,0 +1,23 @@
+# Required proprietary inputs: path | source | SHA-256 | consumer
+#
+# 路径以 Project-Aloha 的固件仓库为根（mu_aloha_platforms）。
+# 设备目录是 Platforms/SurfaceDuo1Pkg/Device/lg-alpha/。
+# 全部从本机原厂固件或 boot_a 转储取得，不入库。
+#
+# 设备树：来自本机 stock boot_a 里的 DTB（LG G8 ThinQ, alphalm）。
+# 本仓库已用 Project-Aloha 的 android-alpha.dtb 交叉核对了 GIC / timer / UFS，
+# 见 README 的「已确认的板级值」。stock DTB 的 sha256 待转储后补齐。
+DeviceTreeBlob/Android/android-alpha.dtb | stock boot_a DTB (android-alpha) | TODO(dump from phone) | boot image DTB; ADT cross-check
+#
+# 原厂 UEFI 驱动（Qualcomm 包）：由 DSC/FDF 引用，路径保持原样、不做修改。
+# 聚合校验值 = 对 `find Binaries -name '*.efi' | sort` 逐个 sha256sum 后再 sha256sum。
+Binaries/QcomPkg/**/*.efi | stock LG G8 ThinQ firmware (Qualcomm UEFI package) | TODO(aggregate) | UEFI drivers required by the DSC/FDF
+#
+# 输入（ButtonsDxe 等 LG 原厂补丁二进制）在 G8 上尚未验证，先留空条目：
+# PatchedBinaries/*.efi | stock LG G8 ThinQ firmware, patched | TODO | UniXNU menu / input
+#
+# 以下 Apple 产物不入库，构建/运行时在本地获取，由 board.toml 的 sha256 校验：
+#   iOS 16.7.16 IPSW                 Apple CDN，url 见 board.toml [ipsw]
+#   kernelcache.release.iphone10b    IPSW 成员，pin 在 board.toml [ipsw.sha256]
+#   DeviceTree.d22ap.im4p            IPSW 成员，pin 在 board.toml [ipsw.sha256]
+#   scripts/base-d22ap.adt           由上面的 DeviceTree 现场解包（scripts/adt.py unwrap），不入库
