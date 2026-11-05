@@ -89,7 +89,7 @@ darwin = "22.6.0"
 volume = "ALPHASP"
 # FV 里的 payload 分区是 512 KiB FAT12（B1 手工步骤），这个 size_mib 只喂给
 # `unixnu payload`，它会写整 MiB 的 FAT32，两者不是一回事。
-size_mib = 1
+size_mib = 32
 loader = "firmware"
 tools = true
 title = "LG G8 - XNU"
