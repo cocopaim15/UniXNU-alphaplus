@@ -47,6 +47,9 @@ packages = [
 
 [firmware.defines]
 DEVICE_MODEL = "alphaplus"
+# SiliciumPkg's SecureBootHandler.c tests `#if ENABLE_SECUREBOOT == 1`; the
+# macro has to come from the build line or the preprocessor sees `#if == 1`.
+ENABLE_SECUREBOOT = "0"
 
 [ipsw]
 # iPhone X（iPhone10,3 / D22AP），iOS 16.7.16 —— iPhone X 支持的最后一个版本。
