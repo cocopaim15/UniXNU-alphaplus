@@ -1,0 +1,126 @@
+name: firmware-alphaplus
+
+# Builds the Mu/UEFI firmware volume for this phone from Project-Aloha's
+# mu_aloha_platforms plus UniXNU's DarwinBoot and payload, then packs a boot
+# image with the kernel built by kernel-8796.yml.
+#
+# Linux runner on purpose: the kernel needs macOS/Xcode, the firmware does not.
+
+on:
+  workflow_dispatch:
+    inputs:
+      unixnu_sha:
+        description: "UniXNU commit the ci/0019 patch is cut against"
+        default: "40d21cc65171c3a24faa130a2a8e899f85790485"
+      kernel_run_id:
+        description: "Run id of the kernel-8796 run whose artifact to pack"
+        required: true
+      ipsw_url:
+        description: "IPSW for prelink/ADT inputs"
+        default: "https://updates.cdn-apple.com/2025FallFCS/fullrestores/122-77006/1158E502-D76D-4226-AA06-ED5E30CD1111/iPhone10,3,iPhone10,6_16.7.16_20H392_Restore.ipsw"
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  UNIXNU_SHA: ${{ inputs.unixnu_sha }}
+
+jobs:
+  firmware:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - name: Check out the device repository
+        uses: actions/checkout@v4
+        with:
+          path: device
+          persist-credentials: false
+
+      - name: Check out UniXNU (pinned) and apply ci/0019
+        run: |
+          git clone --quiet https://github.com/UniXNU/UniXNU.git unixnu
+          git -C unixnu checkout -q "$UNIXNU_SHA"
+          git -C unixnu apply "$GITHUB_WORKSPACE/device/ci/0019-unixnu-8796-ci.patch"
+          test -f unixnu/patches/xnu/zzzz-alphaplus-early-boot-probes.patch
+          git -C unixnu log --oneline -1
+
+      - name: Check out Mu-Silicium (Project-Aloha) for this phone
+        run: |
+          git clone --quiet --depth 1 https://github.com/Project-Aloha/mu_aloha_platforms.git uefi
+          git -C uefi submodule update --init --depth 1
+          du -sh uefi
+          ls uefi/Platforms/SurfaceDuo1Pkg/Device/lg-alpha
+
+      - name: Install host tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq mtools nasm uuid-dev python3-pip build-essential
+          mformat --version
+          python3 --version
+
+      - name: Fetch the kernel artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: kernel-8796
+          path: kernel
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.kernel_run_id }}
+
+      - name: Show what we have
+        run: |
+          find kernel -maxdepth 3 -type f | head -20
+          ls -l kernel/kernel/ 2>/dev/null || true
+
+      - name: Defconfig
+        run: |
+          cd unixnu
+          python3 unixnu defconfig alphaplus_defconfig -D "$GITHUB_WORKSPACE/device"
+          python3 unixnu status -D "$GITHUB_WORKSPACE/device" | head -40
+
+      - name: Build the firmware volume
+        run: |
+          cd unixnu
+          python3 unixnu firmware -D "$GITHUB_WORKSPACE/device" \
+            --uefi "$GITHUB_WORKSPACE/uefi" \
+            --kernel "$GITHUB_WORKSPACE/kernel/kernel/mach.development.bcm2837.unstripped" \
+            --ipsw "${{ inputs.ipsw_url }}" \
+            -j 4 2>&1 | tee firmware.log
+          echo "--- artifacts ---"
+          find "$GITHUB_WORKSPACE/uefi/Build" -name '*.fd' -o -name '*.fv' 2>/dev/null | head
+          find out -maxdepth 4 -type f -size +1M 2>/dev/null | head -20
+
+      - name: Pack the boot image
+        run: |
+          cd unixnu
+          FD=$(find "$GITHUB_WORKSPACE/uefi/Build" -name '*EFI.fd' | head -1)
+          DTB="$GITHUB_WORKSPACE/uefi/Platforms/SurfaceDuo1Pkg/Device/lg-alpha/DeviceTreeBlob/Android/android-alpha.dtb"
+          echo "fd=$FD"
+          echo "dtb=$DTB"
+          test -n "$FD"
+          python3 unixnu bootimg -D "$GITHUB_WORKSPACE/device" \
+            --uefi "$GITHUB_WORKSPACE/uefi" \
+            --kernel "$GITHUB_WORKSPACE/kernel/kernel/mach.development.bcm2837.unstripped" \
+            --ipsw "${{ inputs.ipsw_url }}" \
+            --fd "$FD" --dtb "$DTB" -o "$GITHUB_WORKSPACE/boot-alphaplus.img" 2>&1 | tee bootimg.log
+          ls -l "$GITHUB_WORKSPACE/boot-alphaplus.img"
+
+      - name: Failure summary
+        if: failure()
+        run: |
+          echo "=== last 120 lines of firmware.log ==="
+          tail -n 120 firmware.log 2>/dev/null || true
+          tail -n 120 bootimg.log 2>/dev/null || true
+          find "$GITHUB_WORKSPACE" -maxdepth 3 -name '*.log' | head -20
+
+      - name: Upload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-alphaplus
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            boot-alphaplus.img
+            firmware.log
+            bootimg.log
