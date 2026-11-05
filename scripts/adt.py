@@ -36,8 +36,15 @@ def im4p_payload(buf):
             'encrypted': any(t == 0x04 for t, _ in items[4:])}
     payload = items[3][1]
     if payload[:4] == b'bvx2':
-        payload = subprocess.run(['lzfse', '-decode'], input=payload,
-                                 capture_output=True, check=True).stdout
+        # Prefer the Python binding (`pip install lzfse`) so this works on hosts
+        # without the lzfse CLI, Windows included; fall back to the tool.
+        try:
+            import lzfse
+        except ImportError:
+            payload = subprocess.run(['lzfse', '-decode'], input=payload,
+                                     capture_output=True, check=True).stdout
+        else:
+            payload = lzfse.decompress(payload)
     return payload, info
 
 
