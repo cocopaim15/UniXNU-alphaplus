@@ -136,20 +136,36 @@ jobs:
           find "$GITHUB_WORKSPACE/uefi/Build" -name '*.fd' -o -name '*.fv' 2>/dev/null | head
           find out -maxdepth 4 -type f -size +1M 2>/dev/null | head -20
 
+      - name: Build the payload (kernel + ADT + boot args in one FAT image)
+        run: |
+          set -o pipefail
+          cd unixnu
+          python3 unixnu payload -D "$GITHUB_WORKSPACE/device" \
+            --uefi "$GITHUB_WORKSPACE/uefi" \
+            --kernel "$GITHUB_WORKSPACE/kernel/kernel/mach.development.bcm2837.unstripped" \
+            --ipsw "${{ inputs.ipsw_url }}" \
+            -j 4 2>&1 | tee payload.log
+          echo "--- payload ---"
+          find out -name 'payload.img' -o -name 'payload.json' | head
+
       - name: Pack the boot image
         run: |
           set -o pipefail
           cd unixnu
           FD=$(find "$GITHUB_WORKSPACE/uefi/Build" -name '*EFI.fd' -o -name '*.fd' | head -1)
           DTB="$GITHUB_WORKSPACE/alpha-first.dtb"
+          PAYLOAD=$(find out -name 'payload.img' | head -1)
           echo "fd=$FD"
           echo "dtb=$DTB"
+          echo "payload=$PAYLOAD"
           test -n "$FD"
+          test -n "$PAYLOAD"
           python3 unixnu bootimg -D "$GITHUB_WORKSPACE/device" \
             --uefi "$GITHUB_WORKSPACE/uefi" \
             --kernel "$GITHUB_WORKSPACE/kernel/kernel/mach.development.bcm2837.unstripped" \
             --ipsw "${{ inputs.ipsw_url }}" \
-            --fd "$FD" --dtb "$DTB" -o "$GITHUB_WORKSPACE/boot-alphaplus.img" 2>&1 | tee bootimg.log
+            --fd "$FD" --dtb "$DTB" --ramdisk "$PAYLOAD" \
+            -o "$GITHUB_WORKSPACE/boot-alphaplus.img" 2>&1 | tee bootimg.log
           ls -l "$GITHUB_WORKSPACE/boot-alphaplus.img"
 
       - name: Failure summary
