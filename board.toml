@@ -31,6 +31,9 @@ submodules = [
 # `alphaplus/AcpiTables.inf` 组件能被解析。
 packages = [
   "{uefi}",
+  "{uefi}/Common/Mu",
+  "{uefi}/Common/Mu_OEM_Sample",
+  "{uefi}/Mu_Basecore",
   "{uefi}/Silicon/Qualcomm",
   "{uefi}/Silicon/Silicium",
   "{uefi}/Platforms/LG",
