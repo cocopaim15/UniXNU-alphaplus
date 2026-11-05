@@ -31,6 +31,8 @@ submodules = [
 # `alphaplus/AcpiTables.inf` 组件能被解析。
 packages = [
   "{uefi}",
+  "{uefi}/Silicon/Qualcomm",
+  "{uefi}/Silicon/Silicium",
   "{uefi}/Silicium-ACPI/Platforms/LG",
   "{tree}/package",
   "{tree}/drivers/DarwinBoot",
