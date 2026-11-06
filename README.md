@@ -5,7 +5,15 @@
 
 ## 当前状态
 
-**P1 — 设备仓库骨架。** 板级参数已建表，构建与真机验证尚未开始。
+**P5 — 启动链打通到 XNU 内核入口。**
+
+真机实测：`abl → BootShim → UEFI(Project-Aloha 平台) → BDS → UniXNU 菜单 → payload
+→ DarwinBoot → ExitBootServices → 跳 EL1 内核入口`，屏幕停在装载器画的白色标记上，
+不再返回菜单。固件侧只剩 XNU 内部的早期初始化（页表/串口/显示），见
+`docs/porting-log.md` 第 10 节。
+
+构建与补丁在 `firmware/aloha/`；payload 必须用 **4096 字节扇区的 FAT16** 刷进
+`boot_b`，菜单里的 `Erase boot_a` 动作可以在没有输入时自动把机器带回 fastboot。
 
 已在本机真机确认的平台事实（2026-11-05）：
 

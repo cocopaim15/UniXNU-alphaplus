@@ -416,3 +416,172 @@ ours   9affb503-e643-4141-8b90-17e8588b1d35
    RAM 缓冲；没有串口时至少可以用「崩溃后由 abl 保留的内存」或测试点 UART，
    否则任何修复都只是猜。
 3. 若 1 顺利，再回来解决 payload 的加载方式（FV 内嵌 512 KiB FAT12 或 disk 模式）。
+
+## 9. 改用 Aloha 的构建系统，并把 UniXNU 放进去（2026-11-06 晚）
+
+按第 8 节第 1 条走完：FV 换成 Project-Aloha 自己那套构建的产物，UniXNU 的四个
+模块编进同一个卷。**产物已就绪，尚未上机。**
+
+### 9.1 先补一个结构差异（这次的新证据）
+
+把两边的 FD 解到文件级再对比，差异比第 7 节记的更具体：
+
+| | Aloha `lg-alphaplus_NOSB.img` | 我们的 `boot-alphaplus.img` |
+| --- | --- | --- |
+| SEC | `3e401783-94cc-4fcd-97bc-bd35ac369d2f`，64,952 B，`ArmPlatformPrePiUniCore` | `9affb503-e643-4141-8b90-17e8588b1d35`，69,560 B，`SiliciumPkg/Sec` |
+| `uefiplat.cfg` | 有（11,153 B，FFS 类型 0x02） | **没有** |
+| DXE 卷（LZMA） | 16,228,352 B 解压后，2.4 MB 压缩 | 7,012,360 B，1.06 MB 压缩 |
+
+也就是说：不只是「早期模块 GUID 不同」——他们的 SEC 里带着 `uefiplat.cfg` 的解析
+（`EnableDisplayImageFv`、`UfsSmmuConfigForOtherBootDev`、`SEC Heap`、`UEFI Stack`
+这些串都在 SEC 里），我们那版 SEC 走的是 Silicium 自己的配置路径，没有这份平台配置。
+这条不影响「能不能启动」的最终结论（混合镜像照样失败），但解释了为什么两块 FV
+不是同一个东西。
+
+### 9.2 在本机把那套构建跑起来
+
+他们的 CI 入口是 `./build_uefi.py -d lg-alpha` → `PlatformBuildNoSb.py`（stuart）。
+stuart 的 `--init/--update` 要从 GitHub release 拉 `Mu-Basetools`、`OneCrypto`、
+`Mu_CryptoBin`（合计 300 MB 级），本机对 release 资产整段 reset，只有 codeload 和
+api.github.com 通。
+
+改走 BaseTools 直编，九处坑按出现顺序：
+
+| 轮 | 现象 | 处置 |
+| --- | --- | --- |
+| 1 | `SHARED_CRYPTO_PATH not defined` | 该变量由 stuart 从加密包设；改成从发布 FD 里取出 `BaseCryptoDriverDxeAARCH64`（900 KB）当 `FILE DRIVER` 用 |
+| 2 | `BaseCryptLib not found` | 映射到 `CryptoPkg/Library/BaseCryptLibOnProtocolPpi/`（协议客户端，运行时由上面那个驱动提供） |
+| 3 | `SurfaceDuoACPI/QcomACPI/8150/...` 找不到 | `QcomACPI` 是嵌套子模块（`acpi_oem_qcom_common_downstream`），没在顶层 `.gitmodules` 里 |
+| 4 | zlib `adler32.c` K&R 定义被 `-Werror` 拦 | `zlib.inf` 加 `-Wno-deprecated-non-prototype` |
+| 5 | `duplicate symbol: DefaultExceptionHandler` | CpuDxe 同时挂了 ArmPkg 与 MsCorePkg 两份异常处理库，去掉 MsCorePkg 那份 |
+| 6 | `UefiRuntimeLib` 不支持 `DXE_DRIVER` | 去掉 `SecurityStubDxe` 的 `DxeImageVerificationLib`；NetworkPkg 从 `[Components]` 拿掉（FDF 本来就没放） |
+| 7 | `undefined symbol: __stack_chk_guard` | `CUSTOM_STACK_CHECK_LIB=STATIC`；SEC 另外给 `SecStackCheck.c` 两个符号 |
+| 8 | `llvm-objcopy: too many positional arguments` | Mu 把 `OBJCOPY_FLAGS` 写成占位文字，SEC/PEIM 规则仍然执行它——本地 `Conf/build_rule.txt` 删掉那一行 |
+| 9 | `GenSec: Error opening file ... linux-$(FDT)` | `-D FDT=alpha.dtb`（平时由 stuart 设） |
+
+跑通后：`Build/SurfaceDuo1Pkg/RELEASE_CLANGDWARF/FV/SM8150_EFI.fd`，3,145,728 B，
+FVMAIN_COMPACT 69% 满。**SEC 的 FILE_GUID 与发布镜像一致**，`uefiplat.cfg`、
+`BaseCryptoDriverDxeAARCH64`、`EdkShell`、`BdsDxe`、`UFSDxe` 都在——结构上复现了
+他们的卷。
+
+复现脚本与完整补丁清单：`firmware/aloha/`（`README.md` + `apply-patches.py`）。
+
+### 9.3 把 UniXNU 放进去
+
+四个模块编进 DXE 卷：
+
+| 模块 | 作用 |
+| --- | --- |
+| `UniXNURamDiskDxe` | 把 Android initrd（`payload.img`，FAT32）发布成只读块设备 |
+| `UniXNUDxe` | 在 FV 里找到 `UniXNU.efi`，注册 `Boot####` 并排到 `BootOrder` 最前 |
+| `UniXNU.efi` | 菜单、配置解析、把 `xnu` 条目交给装载器 |
+| `DarwinBoot` | Mach-O 校验、`DARWIN_BOOT_ARGS`、跳 EL1 |
+
+**关键的一处平台改动**：`UniXNURamDiskDxe` 从 HOB `DAEE82E6-8090-4E72-BFB9-78C13CD4E359`
+读 x0（启动器传进来的设备树指针），而 Aloha 的 PrePi（`AndromedaPkg/PrePi`）不建这个
+HOB。补法是两行汇编 + 一段 C：入口把 x0（`x10`）存进 `mBootDtb`，PrePi 建内存 HOB 之后
+用同一个 GUID 把它发出去。`/chosen/linux,initrd-start` 由 abl 在装载 ramdisk 时写进
+那棵树，所以 payload 能被发现。
+
+### 9.4 产物
+
+```
+boot-unixnu.img   37,687,296 B   magic ANDROID!
+  kernel   4,125,096 B @ 0x8000 = gzip(BootShim 112 B + FD 3 MiB) + DTB 1,974,927 B
+  ramdisk 33,554,432 B @ 0x1000000 (payload：unixnu.toml + kernel.macho + adt)
+  page 4096  tags 0x100
+```
+
+payload 卷标 `ALPHASP`，内容与 `unixnu payload` 的目录布局一致
+（`/EFI/UniXNU/unixnu.toml`、`Payloads/kernel.macho{,.adt}`）。内核参数沿用
+`board.toml` 的 `debug=0xc serial=3 cpus=8 keepsyms=1 rd=ufsroot0 wdt=-1`。
+
+### 9.5 下一步
+
+1. `fastboot flash boot_a boot-unixnu.img` → 长按电源 → 看屏幕。这一步要人把机器
+   切到 fastboot（关机 → 音量下 → 插线）。
+2. 屏幕出现 UniXNU 菜单 = 固件卷 + payload 发现 + 菜单三件事同时成立；
+   直接进 Aloha 自己的菜单/Shell = `MsBootPolicy` 覆盖了 `BootOrder`，要把它摘掉；
+   黑屏/回 fastboot = 固件卷本身还没起来，回到第 9.2 节的差异继续查。
+3. 菜单里选 XNU 之后：绿条 = 进了 `DarwinEnter`；`DARWINBOOT: command line:` 出现在
+   屏幕 = 装载器走到了 handoff；panic = 内核阶段的活，和第 7 节不是同一个问题了。
+
+回滚镜像仍是 `magisk_patched-30600_mZhNS.img`（`boot_a`，已校验）。
+
+## 10. 真机跑通到 DarwinBoot（2026-11-06 深夜）
+
+第 9 节的产物刷进真机后，一轮一轮把链路推到了 **DarwinBoot 的最后一步**。
+现在每次重启不需要 9008：没有输入时 60 秒倒计时会自己擦掉 `boot_a` 进 fastboot。
+
+### 10.1 屏幕上的里程碑
+
+| 现象 | 含义 |
+| --- | --- |
+| Aloha 开机 logo → 扳手二维码页 | 固件起来了，BDS 找不到可启动项（`BootFailIndicator`） |
+| `UniXNU version 0.1.0` + 菜单 | 固件卷 + UniXNU 正常 |
+| `config: \EFI\UniXNU\unixnu.toml` + `LG G8 – XNU` 条目 | payload 卷被发现 |
+| 选 XNU 后出现 `MARK macho entry …` | DarwinBoot 已经在读内核 |
+
+### 10.2 四个关键结论
+
+1. **payload 必须用 4096 字节扇区的 FAT。** 页脚实测 `bs4k 115 bs512 0` —— UFS 的
+   逻辑块是 4096 字节，512 字节扇区的 FAT16/FAT32 一律挂不上（`fs 6 efi 0 cfg 0`）。
+   用 `mkfs.vfat -F 16 -S 4096 -s 1` 做 64 MiB 卷、整卷刷进 `boot_b`（无分区表），
+   才出现 `fs 7 efi 1 cfg 1`。
+2. **ramdisk 这条路走不通。** `UniXNURamDiskDxe` 读到的 x0 = `0x81000000`，但
+   `0x80000000–0x82A00000`（Kernel 段）整段扫不到 FAT 引导扇区；4 MiB ramdisk 能
+   启动、32 MiB 直接黑屏。abl 并没有把 initrd 放到我们能找到的地方。
+3. **按键要直接轮询设备。** 菜单原来等 `gST->ConIn->WaitForKey`，在这台机器上永远
+   不触发；改成每 100 ms 轮询所有 `EFI_SIMPLE_TEXT_INPUT(_EX)_PROTOCOL` 后，
+   音量上/下 = `SCAN_UP`/`SCAN_DOWN`（0x01/0x02），电源键 = `scan=0x0102`，
+   任意非方向键当确认。
+4. **进 fastboot 不用 9008 了。** 菜单里有 `Erase boot_a (fastboot)` 动作；把它设成
+   内置配置以及 payload 配置的默认项（倒计时 20/60 s），无人值守启动会自动擦掉
+   `boot_a` 并重启进 fastboot。内置配置解析完会被 `Config->DefaultIndex = 0` 覆盖，
+   这一行要删掉，否则默认项永远是第一条。
+
+### 10.3 DarwinBoot 卡在哪
+
+给 DarwinBoot 加了直接写 framebuffer 的阶段标记（`Mark()` + `DiagDraw()`），
+一次启动看到的顺序是：
+
+```
+MARK macho entry FFFFFFFF0073F1488   mach-O 解析通过（虚拟 entry）
+MARK window A0004000                 窗口分配在 0xA0004000
+MARK copied F68000                   段拷贝完成（用了 16.1 MiB）
+MARK args A0F64000                   boot_args 地址
+MARK payloads F68000                 树/信任缓存/附加件拷贝完毕
+MARK map 1A70                        GetMemoryMap 返回 0x1A70 字节
+（之后停住，按键无响应，不再出 EBS/jumping）
+```
+
+也就是说：**内核读入、Mach-O 校验、窗口分配、段拷贝、ADT 组装都过了，卡在
+`ExitBootServices` 之前**。已排除的：控制台 `Print`（quiet 版把交接前的打印全删了，
+现象不变）、FAT 卷 `Root->Close`（跳过它，现象不变）。
+
+### 10.4 交接成功：已经跳进内核（当晚最后一段）
+
+把标记换成整屏色块（红 = 进 `GetMemoryMap`，绿 = map 返回，蓝 = `ExitBootServices`
+返回，白 = 即将跳内核），第一次就看到 **红→绿→蓝→白 一闪而过**，屏幕最后停在
+「彩条 + 下半屏白色」——**`ExitBootServices` 其实一直是成功的**。
+
+之前几次「停在 exit boot」的真因是探针自己：`Mark()/MarkColor()` 里又调了
+`gBS->LocateProtocol`，而 `ExitBootServices` 之后 boot services 已经不存在，
+那个调用把装载器直接带崩。把 framebuffer 信息在 EBS 之前缓存到全局后，
+探针不再碰 `gBS`，链路一次走通。
+
+现在的状态：**固件 → UniXNU → payload → DarwinBoot → ExitBootServices → 跳 EL1
+内核入口** 全部完成，屏幕不再返回菜单。剩下的全在 XNU 内部（页表/串口/显示初始化），
+与本仓库的固件部分已经不是同一个问题。
+
+### 10.5 复现材料
+
+`firmware/aloha/patches/` 里是这一轮的全部脚本：
+
+* `wsl-fwbuild.sh`、`wsl-integrate-unixnu.py` —— 构建与 UniXNU 集成；
+* `UniXNURamDiskDxe.c` —— 重写后的 initrd/FAT 探测驱动（带状态变量）；
+* `wsl-patch-pollkeys.py`、`wsl-patch-keydebug.py` —— 按键轮询与键码显示；
+* `wsl-patch-erase-action.py`、`wsl-patch-autowipe.py`、`wsl-patch-keepdefault.py`
+  —— `Erase boot_a` 动作、默认项与倒计时；
+* `wsl-patch-darwinboot-*.py` —— 阶段标记、返回码、quiet 交接；
+* `wsl-pack-4k.sh`、`wsl-pack-payload2.sh` —— 4096 字节扇区 payload 与启动镜像。
