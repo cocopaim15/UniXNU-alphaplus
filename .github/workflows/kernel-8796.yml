@@ -79,10 +79,9 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Select Xcode 15
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: "15.4"
+      # macos-14 (Xcode 15) 在这个账号上拿不到，macos-latest 只有 Xcode 26。
+      # 这个分支就是用来验真的：Xcode 26 的 iig 会不会真的和 8796 对不上。
+      # 故意不选 Xcode，用 runner 的默认版本。
 
       - name: Install host tools
         run: |
