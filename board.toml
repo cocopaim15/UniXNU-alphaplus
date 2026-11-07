@@ -93,9 +93,13 @@ size_mib = 32
 loader = "firmware"
 tools = true
 title = "LG G8 - XNU"
-# 机器实际 6 GB（ro.boot.product.lge.ddr_size = 6387924992），这里先按 3 GB
-# 给 OS 一个安全子集，与 mh2lm 一致。
-dram_size = "0xc0000000"
+# 机器实际 6 GB（ro.boot.product.lge.ddr_size = 6387924992）。XNU 的
+# gDramBase/gDramSize 是一个**连续窗口**，起点是 devices.py 的 phys_base
+# 0xC4000000，所以窗口上限是 bank 2 的顶端 0x140000000：
+#   0xC4000000 + 0x7C000000 = 0x140000000（1.94 GiB，前 64 MiB 留给 UEFI runtime）
+# 旧值 0xC0000000 会把窗口推到 0x184000000，越过物理内存顶端 1.06 GiB；
+# 这段地址在 pmap 里没有对应页，属于「子集」写成了「超集」。
+dram_size = "0x7c000000"
 panic_screen = false
 timeout = 3
 # TODO(verify): serial=3 沿自 guacamole，LG 平台的 UART 编号未在真机确认。

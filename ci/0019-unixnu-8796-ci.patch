@@ -1787,3 +1787,310 @@ index 19558bd..4d95293 100644
      build_archives(ctx, env)
      run(['bash', script], cwd=ctx.tree, env=env, log_file=ctx.logs / 'kernel.log')
  
+diff --git a/patches/xnu/zzzzz-alphaplus-stop-probes.patch b/patches/xnu/zzzzz-alphaplus-stop-probes.patch
+new file mode 100644
+--- /dev/null
++++ b/patches/xnu/zzzzz-alphaplus-stop-probes.patch
+@@ -0,0 +1,227 @@
++--- a/osfmk/arm/arm_init.c	2026-11-07 23:10:12.226293957 +0800
+++++ b/osfmk/arm/arm_init.c	2026-11-07 23:11:17.783109914 +0800
++@@ -348,6 +348,8 @@
++ 	unsigned int dt_entry_size = 0;
++ 
++ 	ALPHA_PROBE_POINT(ALPHA_PROBE_AT_ARM_INIT);
+++	alphaplus_probe_stop_init(args->CommandLine);
+++	ALPHA_STOP(ALPHA_STOP_ARM_INIT);
++ 	arm_setup_pre_sign();
++ 
++ 	arm_slide_rebase_and_sign_image();
++@@ -366,6 +368,7 @@
++ 
++ 	PE_init_platform(FALSE, args); /* Get platform expert set up */
++ 	ALPHA_PROBE_POINT(ALPHA_PROBE_AT_PE_INIT);
+++	ALPHA_STOP(ALPHA_STOP_AFTER_PE_INIT);
++ 
++ #if __arm64__
++ 	configure_timer_apple_regs();
++@@ -389,6 +392,7 @@
++ 	}
++ 
++ 	platform_stall_panic_or_spin(PLATFORM_STALL_XNU_LOCATION_ARM_INIT);
+++	ALPHA_STOP(ALPHA_STOP_AFTER_STALL);
++ 
++ 	chosen = NULL; // Force a re-lookup later on since VM addresses are not final at this point
++ 	dt_entry_size = 0;
++@@ -427,10 +431,12 @@
++ #endif
++ 
++ 	ml_parse_cpu_topology();
+++	ALPHA_STOP(ALPHA_STOP_AFTER_TOPOLOGY);
++ 
++ 
++ 	master_cpu = ml_get_boot_cpu_number();
++ 	assert(master_cpu >= 0 && master_cpu <= ml_get_max_cpu_number());
+++	ALPHA_STOP(ALPHA_STOP_AFTER_MASTER_CPU);
++ 
++ 	BootCpuData.cpu_number = (unsigned short)master_cpu;
++ 	BootCpuData.intstack_top = (vm_offset_t) &intstack_top;
++@@ -443,8 +449,10 @@
++ 	CpuDataEntries[master_cpu].cpu_data_paddr = (void *)((uintptr_t)(args->physBase)
++ 	    + ((uintptr_t)&BootCpuData
++ 	    - (uintptr_t)(args->virtBase)));
+++	ALPHA_STOP(ALPHA_STOP_AFTER_CPUDATA);
++ 
++ 	thread = thread_bootstrap();
+++	ALPHA_STOP(ALPHA_STOP_AFTER_THREAD);
++ 	thread->machine.CpuDatap = &BootCpuData;
++ 	thread->machine.pcpu_data_base = (vm_offset_t)0;
++ 	machine_set_current_thread(thread);
++@@ -457,11 +465,14 @@
++ 	 */
++ 	thread->machine.preemption_count = 0;
++ 	cpu_bootstrap();
+++	ALPHA_STOP(ALPHA_STOP_AFTER_CPU_BOOT);
++ 
++ 	rtclock_early_init();
+++	ALPHA_STOP(ALPHA_STOP_AFTER_RTCLOCK);
++ 
++ 	kernel_debug_string_early("kernel_startup_bootstrap");
++ 	kernel_startup_bootstrap();
+++	ALPHA_STOP(ALPHA_STOP_AFTER_STARTUP_BS);
++ 
++ 	/*
++ 	 * Initialize the timer callout world
++@@ -471,6 +482,7 @@
++ 	cpu_init();
++ 
++ 	processor_bootstrap();
+++	ALPHA_STOP(ALPHA_STOP_AFTER_PROCESSOR);
++ 
++ 	if (PE_parse_boot_argn("maxmem", &maxmem, sizeof(maxmem))) {
++ 		xmaxmem = (uint64_t) maxmem * (1024 * 1024);
++@@ -519,6 +531,7 @@
++ 
++ 	arm_vm_init(xmaxmem, args);
++ 	ALPHA_PROBE_POINT(ALPHA_PROBE_AT_VM_INIT);
+++	ALPHA_STOP(ALPHA_STOP_AFTER_VM_INIT);
++ 
++ 	if (debug_boot_arg) {
++ 		patch_low_glo();
++@@ -533,8 +546,10 @@
++ 	/* Setup debugging output. */
++ 	const unsigned int serial_exists = serial_init();
++ 	ALPHA_PROBE_POINT(ALPHA_PROBE_AT_SERIAL_INIT);
+++	ALPHA_STOP(ALPHA_STOP_AFTER_SERIAL);
++ 	kernel_startup_initialize_upto(STARTUP_SUB_KPRINTF);
++ 	ALPHA_PROBE_POINT(ALPHA_PROBE_AT_KPRINTF);
+++	ALPHA_STOP(ALPHA_STOP_AFTER_KPRINTF);
++ 	kprintf("kprintf initialized\n");
++ 
++ 	serialmode = 0;
++@@ -576,10 +591,12 @@
++ 		disableConsoleOutput = FALSE;     /* Allow printfs to happen */
++ 	}
++ 	PE_create_console();
+++	ALPHA_STOP(ALPHA_STOP_AFTER_CONSOLE);
++ 
++ 	/* setup console output */
++ 	PE_init_printf(FALSE);
++ 	ALPHA_PROBE_POINT(ALPHA_PROBE_AT_PRINTF);
+++	ALPHA_STOP(ALPHA_STOP_AFTER_PRINTF);
++ 
++ #if __arm64__
++ #if DEBUG
++@@ -656,6 +673,7 @@
++ 	 */
++ 	__stack_chk_guard &= ~(0xFFULL << 8);
++ 	ALPHA_PROBE_POINT(ALPHA_PROBE_AT_MACHINE_STARTUP);
+++	ALPHA_STOP(ALPHA_STOP_BEFORE_MACHINE);
++ 	machine_startup(args);
++ }
++ 
++--- a/osfmk/arm64/alphaplus_probe.h	2026-11-07 23:10:12.226293957 +0800
+++++ b/osfmk/arm64/alphaplus_probe.h	2026-11-07 23:11:17.774962031 +0800
++@@ -59,4 +59,40 @@
++ 	do { if (ALPHA_PROBE_RESET_AT == (point)) { alphaplus_probe_reset(); } } while (0)
++ #endif /* __ASSEMBLER__ */
++ 
+++
+++/*
+++ * Runtime checkpoints (alphaplus_stop=<n> in the boot-arg command line).
+++ *
+++ * ALPHA_PROBE_RESET_AT above is compile time: one point per kernel build. This
+++ * selector is read from the command line that DarwinBoot writes, so a single
+++ * build bisects the whole of arm_init() by changing the payload's args.
+++ * The reset itself is alphaplus_probe_reset() (PSCI SYSTEM_RESET after the same
+++ * delay), and the points are placed where the HackiOS bring-up puts its
+++ * loader checkpoints.
+++ */
+++#define ALPHA_STOP_ARM_INIT           10      /* first statement of arm_init() */
+++#define ALPHA_STOP_AFTER_PE_INIT      11      /* PE_init_platform(FALSE)返回 */
+++#define ALPHA_STOP_AFTER_STALL        12      /* 平台 stall 检查之后 */
+++#define ALPHA_STOP_AFTER_TOPOLOGY     13      /* ml_parse_cpu_topology()之后 */
+++#define ALPHA_STOP_AFTER_MASTER_CPU   14      /* master_cpu 选好之后 */
+++#define ALPHA_STOP_AFTER_CPUDATA      15      /* CpuDataEntries 填好之后 */
+++#define ALPHA_STOP_AFTER_THREAD       16      /* thread_bootstrap()之后 */
+++#define ALPHA_STOP_AFTER_CPU_BOOT     17      /* cpu_bootstrap()之后 */
+++#define ALPHA_STOP_AFTER_RTCLOCK      18      /* rtclock_early_init()之后 */
+++#define ALPHA_STOP_AFTER_STARTUP_BS   19      /* kernel_startup_bootstrap()之后 */
+++#define ALPHA_STOP_AFTER_TIMER_CALL   20      /* timer_call_init()+cpu_init()之后 */
+++#define ALPHA_STOP_AFTER_PROCESSOR    21      /* processor_bootstrap()之后 */
+++#define ALPHA_STOP_AFTER_VM_INIT      22      /* arm_vm_init()之后 */
+++#define ALPHA_STOP_AFTER_SERIAL       23      /* serial_init()之后 */
+++#define ALPHA_STOP_AFTER_KPRINTF      24      /* STARTUP_SUB_KPRINTF 之后 */
+++#define ALPHA_STOP_AFTER_CONSOLE      25      /* PE_create_console()之后 */
+++#define ALPHA_STOP_AFTER_PRINTF       26      /* PE_init_printf(FALSE)之后 */
+++#define ALPHA_STOP_BEFORE_MACHINE     27      /* machine_startup()之前 */
+++
+++#ifndef __ASSEMBLER__
+++void alphaplus_probe_stop_init(const char *command_line);
+++void alphaplus_probe_stop(int point);
+++#define ALPHA_STOP(point) alphaplus_probe_stop(point)
+++#endif /* __ASSEMBLER__ */
+++
++ #endif /* _ARM64_ALPHA_PROBE_H_ */
++--- a/osfmk/kern/startup.c	2026-11-07 23:10:12.226565006 +0800
+++++ b/osfmk/kern/startup.c	2026-11-07 23:11:17.775176767 +0800
++@@ -255,6 +255,67 @@
++ 	}
++ }
++ 
+++
+++/*
+++ * alphaplus_stop=<n>: scanned straight out of boot_args->CommandLine, because
+++ * the first checkpoint runs before PE_state.bootArgs exists and
+++ * PE_parse_boot_arg_str() would not find anything there.
+++ */
+++static int alphaplus_stop_point = -1;
+++static int alphaplus_stop_ready;
+++
+++static int
+++alphaplus_stop_prefix(const char *text, const char *prefix)
+++{
+++	while (*prefix != '\0') {
+++		if (*text != *prefix) {
+++			return 0;
+++		}
+++		text++;
+++		prefix++;
+++	}
+++	return 1;
+++}
+++
+++void
+++alphaplus_probe_stop_init(const char *command_line)
+++{
+++	static const char match[] = "alphaplus_stop=";
+++	int value = 0;
+++	int digits = 0;
+++
+++	if (alphaplus_stop_ready) {
+++		return;
+++	}
+++	alphaplus_stop_ready = 1;
+++	if (command_line == NULL) {
+++		return;
+++	}
+++	while (*command_line != '\0') {
+++		if (alphaplus_stop_prefix(command_line, match)) {
+++			command_line += sizeof(match) - 1;
+++			while (*command_line >= '0' && *command_line <= '9') {
+++				value = value * 10 + (*command_line - '0');
+++				digits++;
+++				command_line++;
+++			}
+++			if (digits > 0) {
+++				alphaplus_stop_point = value;
+++			}
+++			return;
+++		}
+++		command_line++;
+++	}
+++}
+++
+++void
+++alphaplus_probe_stop(int point)
+++{
+++	if (alphaplus_stop_point == point) {
+++		alphaplus_probe_reset();
+++	}
+++}
+++
++ static inline void
++ kernel_bootstrap_log(const char *message)
++ {
+diff --git a/patches/xnu/zzzzzz-alphaplus-log-ring.patch b/patches/xnu/zzzzzz-alphaplus-log-ring.patch
+new file mode 100644
+--- /dev/null
++++ b/patches/xnu/zzzzzz-alphaplus-log-ring.patch
+@@ -0,0 +1,70 @@
++--- a/osfmk/console/serial_console.c	2026-11-07 23:09:19.547964200 +0800
+++++ b/osfmk/console/serial_console.c	2026-11-07 23:49:26.879048609 +0800
++@@ -509,11 +509,15 @@
++  * @param str The string of characters to print.
++  * @param size The number of characters in `str` to print.
++  */
+++extern void alphaplus_log_write(const char *str, int size); /* osfmk/kern/startup.c */
+++
++ void
++ console_write(char *str, int size)
++ {
++ 	assert(str != NULL);
++ 
+++	alphaplus_log_write(str, size);
+++
++ 	char *write_ptr = NULL;
++ 	int chunk_size = CPU_CONS_BUF_SIZE;
++ 	int i = 0;
++--- a/osfmk/kern/startup.c	2026-11-07 23:11:18.417966347 +0800
+++++ b/osfmk/kern/startup.c	2026-11-07 23:49:26.878178608 +0800
++@@ -316,6 +316,49 @@
++ 	}
++ }
++ 
+++/*
+++ * alphaplus RAM log ring.
+++ *
+++ * There is no serial console on this board and the video console is attached
+++ * late, so every kprintf line is appended here as well. The ring is a
+++ * file-backed global: the non-zero initialiser keeps it out of __BSS, which
+++ * means "ALPHALOG" sits inside the kernel image and DarwinBoot can find the
+++ * buffer by scanning the image it just copied.
+++ *
+++ *   offset 0: magic "ALPHALOG"
+++ *   offset 8: uint32 head (next write position, never wrapped by the reader)
+++ *   offset 12: uint32 size
+++ *   offset 16: data[size]
+++ */
+++#define ALPHA_LOG_RING_SIZE     (64 * 1024)
+++
+++typedef struct {
+++	char             magic[8];
+++	volatile uint32_t head;
+++	uint32_t         size;
+++	char             data[ALPHA_LOG_RING_SIZE];
+++} alphaplus_log_ring_t;
+++
+++alphaplus_log_ring_t alphaplus_log_ring = {
+++	"ALPHALOG", 0, ALPHA_LOG_RING_SIZE
+++};
+++
+++void
+++alphaplus_log_write(const char *str, int size)
+++{
+++	int i;
+++
+++	for (i = 0; i < size; i++) {
+++		uint32_t at = alphaplus_log_ring.head;
+++		if (at >= ALPHA_LOG_RING_SIZE) {
+++			at = 0;
+++		}
+++		alphaplus_log_ring.data[at] = str[i];
+++		alphaplus_log_ring.head = at + 1;
+++	}
+++}
+++
+++
++ static inline void
++ kernel_bootstrap_log(const char *message)
++ {

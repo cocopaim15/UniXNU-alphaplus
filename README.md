@@ -5,12 +5,18 @@
 
 ## 当前状态
 
-**P5 — 启动链打通到 XNU 内核入口。**
+**P5 — 启动链打通到 XNU 内核入口，内核已在 EL1 上执行到打开 MMU 之前。**
 
 真机实测：`abl → BootShim → UEFI(Project-Aloha 平台) → BDS → UniXNU 菜单 → payload
-→ DarwinBoot → ExitBootServices → 跳 EL1 内核入口`，屏幕停在装载器画的白色标记上，
-不再返回菜单。固件侧只剩 XNU 内部的早期初始化（页表/串口/显示），见
-`docs/porting-log.md` 第 10 节。
+→ DarwinBoot → ExitBootServices → 跳 EL1 内核入口`，屏幕不再返回菜单。跳过去之后
+**内核自己画出 8 条探针色带**（红→橙→黄→白→青→蓝→品红→灰，钉在
+`osfmk/arm64/start.s` 的各阶段），说明 EL1 入口、`boot_args`、异常栈、bootstrap
+页表与 TCR/TTBR/MAIR 全部执行完，停在 `msr SCTLR_EL1` 之前。见
+`docs/porting-log.md` 第 10、11 节。
+
+内核里带着 `alphaplus_probe_step()`：给 payload 的 args 加
+`alphaplus_reset=<步骤名>` 就能让任意运行期步骤等 3 秒后 PSCI 重启，用重启与否
+定位内核死在哪一段，不需要重编内核（`firmware/aloha/patches/wsl-pack-probe.py`）。
 
 构建与补丁在 `firmware/aloha/`；payload 必须用 **4096 字节扇区的 FAT16** 刷进
 `boot_b`，菜单里的 `Erase boot_a` 动作可以在没有输入时自动把机器带回 fastboot。
