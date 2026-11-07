@@ -46,9 +46,10 @@ defaults:
 
 jobs:
   kernel:
-    # macos-14 在当前账号上被拒（"configuration ... is not supported"），
-    # 用 macos-latest；下面那一步会强制选 Xcode 15，iig 对版本敏感。
-    runs-on: macos-latest
+    # macos-14 / macos-latest（arm64）在当前账号上拿不到或被拒
+    # （"configuration 'macos-14-arm64-us-default' is not supported"），
+    # macos-latest 还没有 Xcode 15。macos-13 是 Intel 镜像，带 Xcode 15.x。
+    runs-on: macos-13
     timeout-minutes: 350
     env:
       # format 1 的输出目录是 out/<board>
