@@ -46,7 +46,9 @@ defaults:
 
 jobs:
   kernel:
-    runs-on: macos-14
+    # macos-14 在当前账号上被拒（"configuration ... is not supported"），
+    # 用 macos-latest；下面那一步会强制选 Xcode 15，iig 对版本敏感。
+    runs-on: macos-latest
     timeout-minutes: 350
     env:
       # format 1 的输出目录是 out/<board>
