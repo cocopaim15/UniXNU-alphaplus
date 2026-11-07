@@ -2094,3 +2094,18 @@ new file mode 100644
 + static inline void
 + kernel_bootstrap_log(const char *message)
 + {
+diff --git a/patches/xnu/zzzzzzz-alphaplus-newer-clang.patch b/patches/xnu/zzzzzzz-alphaplus-newer-clang.patch
+new file mode 100644
+--- /dev/null
++++ b/patches/xnu/zzzzzzz-alphaplus-newer-clang.patch
+@@ -0,0 +1,10 @@
++--- a/makedefs/MakeInc.def
+++++ b/makedefs/MakeInc.def
++@@ -306,7 +306,6 @@
++ 	-fno-builtin \
++ 	-fno-common \
++ 	-ftrivial-auto-var-init=zero \
++-	-enable-trivial-auto-var-init-zero-knowing-it-will-be-removed-from-clang \
++ 	-fsigned-bitfields \
++ 	-fmerge-all-constants \
++ 	-fno-c++-static-destructors \
