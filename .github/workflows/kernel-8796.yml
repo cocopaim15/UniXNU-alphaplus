@@ -70,7 +70,7 @@ jobs:
           git -C unixnu log --oneline -1
           git -C unixnu apply "$GITHUB_WORKSPACE/device/ci/0019-unixnu-8796-ci.patch"
           grep -n 'xnu-8796' unixnu/feeds.toml
-          test -f unixnu/patches/xnu/zzzz-alphaplus-early-boot-probes.patch
+          test -f unixnu/patches/xnu/zzzz-alphaplus-bringup.patch
           if [ -d device/patches/xnu ]; then
             echo "::error::device/patches/xnu would replace UniXNU's patches/xnu (format 1 module override)"
             exit 1
