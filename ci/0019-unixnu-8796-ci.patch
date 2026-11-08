@@ -1271,10 +1271,10 @@ diff --git a/patches/xnu/zzzz-alphaplus-bringup.patch b/patches/xnu/zzzz-alphapl
 new file mode 100644
 --- /dev/null
 +++ b/patches/xnu/zzzz-alphaplus-bringup.patch
-@@ -0,0 +1,933 @@
+@@ -0,0 +1,842 @@
 +diff -ruN '--exclude=.git' /root/xnu-ref/bsd/kern/bsd_init.c xnu-m/bsd/kern/bsd_init.c
 +--- a/bsd/kern/bsd_init.c	2026-11-07 23:09:19.257722188 +0800
-++++ b/bsd/kern/bsd_init.c	2026-11-08 10:32:18.910568670 +0800
+++++ b/bsd/kern/bsd_init.c	2026-11-08 10:44:35.016224923 +0800
 +@@ -495,7 +495,9 @@
 + #if DEBUG_BSDINIT
 + #define bsd_init_kprintf(x, ...) kprintf("bsd_init: " x, ## __VA_ARGS__)
@@ -1288,7 +1288,7 @@ new file mode 100644
 + 	throttle_init();
 +diff -ruN '--exclude=.git' /root/xnu-ref/iokit/Kernel/IOPlatformExpert.cpp xnu-m/iokit/Kernel/IOPlatformExpert.cpp
 +--- a/iokit/Kernel/IOPlatformExpert.cpp	2026-11-07 23:09:19.453187527 +0800
-++++ b/iokit/Kernel/IOPlatformExpert.cpp	2026-11-08 10:32:18.910568670 +0800
+++++ b/iokit/Kernel/IOPlatformExpert.cpp	2026-11-08 10:44:35.016224923 +0800
 +@@ -62,6 +62,8 @@
 + #include <pexpert/pexpert.h>
 + #include <uuid/uuid.h>
@@ -1334,7 +1334,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/arm/arm_init.c xnu-m/osfmk/arm/arm_init.c
 +--- a/osfmk/arm/arm_init.c	2026-11-07 23:09:19.530183852 +0800
-++++ b/osfmk/arm/arm_init.c	2026-11-08 10:32:18.910568670 +0800
+++++ b/osfmk/arm/arm_init.c	2026-11-08 10:44:35.016224923 +0800
 +@@ -38,6 +38,7 @@
 + #include <kern/timer_queue.h>
 + #include <kern/processor.h>
@@ -1466,7 +1466,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/arm64/alphaplus_probe.h xnu-m/osfmk/arm64/alphaplus_probe.h
 +--- a/osfmk/arm64/alphaplus_probe.h	1970-01-01 08:00:00.000000000 +0800
-++++ b/osfmk/arm64/alphaplus_probe.h	2026-11-08 10:32:18.910568670 +0800
+++++ b/osfmk/arm64/alphaplus_probe.h	2026-11-08 10:44:35.016224923 +0800
 +@@ -0,0 +1,98 @@
 ++/*
 ++ * alphaplus early boot probes: where the timed reset is placed.
@@ -1568,7 +1568,7 @@ new file mode 100644
 ++#endif /* _ARM64_ALPHA_PROBE_H_ */
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/arm64/start.s xnu-m/osfmk/arm64/start.s
 +--- a/osfmk/arm64/start.s	2026-11-07 23:09:19.540061779 +0800
-++++ b/osfmk/arm64/start.s	2026-11-08 10:32:18.910739688 +0800
+++++ b/osfmk/arm64/start.s	2026-11-08 10:44:35.016378207 +0800
 +@@ -89,6 +89,111 @@
 + .endmacro
 + 
@@ -1803,7 +1803,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/console/serial_console.c xnu-m/osfmk/console/serial_console.c
 +--- a/osfmk/console/serial_console.c	2026-11-07 23:09:19.547964200 +0800
-++++ b/osfmk/console/serial_console.c	2026-11-08 10:32:18.910739688 +0800
+++++ b/osfmk/console/serial_console.c	2026-11-08 10:44:35.016378207 +0800
 +@@ -509,11 +509,15 @@
 +  * @param str The string of characters to print.
 +  * @param size The number of characters in `str` to print.
@@ -1822,113 +1822,15 @@ new file mode 100644
 + 	int i = 0;
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/kern/startup.c xnu-m/osfmk/kern/startup.c
 +--- a/osfmk/kern/startup.c	2026-11-07 23:09:19.592984926 +0800
-++++ b/osfmk/kern/startup.c	2026-11-08 10:32:27.449356885 +0800
-+@@ -71,109 +71,57 @@
+++++ b/osfmk/kern/startup.c	2026-11-08 10:44:44.177374168 +0800
++@@ -71,6 +71,57 @@
 + 
 + #include <mach/boolean.h>
 + #include <mach/machine.h>
-+-#include <mach/thread_act.h>
-+-#include <mach/task_special_ports.h>
-+-#include <mach/vm_param.h>
-+-#include <kern/assert.h>
-+-#include <kern/mach_param.h>
-+-#include <kern/misc_protos.h>
-+-#include <kern/clock.h>
-+-#include <kern/coalition.h>
-+-#include <kern/cpu_number.h>
-+-#include <kern/cpu_quiesce.h>
-+-#include <kern/ledger.h>
-+-#include <kern/machine.h>
-+-#include <kern/processor.h>
-+-#include <kern/restartable.h>
-+-#include <kern/sched_prim.h>
-+-#include <kern/turnstile.h>
-+-#if CONFIG_SCHED_SFI
-+-#include <kern/sfi.h>
-+-#endif
-+-#include <kern/startup.h>
-+-#include <kern/task.h>
-+-#include <kern/thread.h>
-+-#include <kern/timer.h>
-+-#if CONFIG_TELEMETRY
-+-#include <kern/telemetry.h>
-+-#endif
-+-#include <kern/zalloc.h>
-+-#include <kern/locks.h>
-+-#include <kern/debug.h>
-+-#if KPERF
-+-#include <kperf/kperf.h>
-+-#endif /* KPERF */
-+-#include <corpses/task_corpse.h>
-+-#include <prng/random.h>
-+-#include <console/serial_protos.h>
-+-#include <vm/vm_kern.h>
-+-#include <vm/vm_init.h>
-+-#include <vm/vm_map.h>
-+-#include <vm/vm_object.h>
-+-#include <vm/vm_page.h>
-+-#include <vm/vm_pageout.h>
-+-#include <vm/vm_shared_region.h>
-+-#include <machine/pmap.h>
-+-#include <machine/commpage.h>
-+-#include <machine/machine_routines.h>
-+-#include <libkern/version.h>
-+-#include <pexpert/device_tree.h>
-+-#include <sys/codesign.h>
-+-#include <sys/kdebug.h>
-+-#include <sys/random.h>
-+-#include <sys/ktrace.h>
-+-#include <sys/trust_caches.h>
-+-#include <sys/code_signing.h>
-+-#include <libkern/section_keywords.h>
-+-
-+-#include <kern/waitq.h>
-+-#include <ipc/ipc_voucher.h>
-+-#include <mach/host_info.h>
-+-#include <pthread/workqueue_internal.h>
-+-
-+-#if CONFIG_XNUPOST
-+-#include <tests/ktest.h>
-+-#include <tests/xnupost.h>
-+-#endif
-+-
-+-#if CONFIG_ATM
-+-#include <atm/atm_internal.h>
-+-#endif
-+-
-+-#if CONFIG_CSR
-+-#include <sys/csr.h>
-+-#endif
-+-
-+-#if ALTERNATE_DEBUGGER
-+-#include <arm64/alternate_debugger.h>
-+-#endif
-+-
-+-#if MACH_KDP
-+-#include <kdp/kdp.h>
-+-#endif
-+-
-+-#if CONFIG_MACF
-+-#include <security/mac_mach_internal.h>
-+-#if CONFIG_VNGUARD
-+-extern void vnguard_policy_init(void);
-+-#endif
-+-#endif
-+-
-+-#if KPC
-+-#include <kern/kpc.h>
-+-#endif
-+ 
-+-#if HYPERVISOR
-+-#include <kern/hv_support.h>
-+-#endif
+++
 ++#include <pexpert/pexpert.h>
 ++#include <arm/machine_routines.h>
-++#include <vm/vm_kern.h>
-+ 
-+-#if CONFIG_UBSAN_MINIMAL
-+-#include <san/ubsan_minimal.h>
-+-#endif
+++
 ++/*
 ++ * Paint one square per bring-up step on the bottom of the frame buffer.
 ++ *
@@ -1938,8 +1840,7 @@ new file mode 100644
 ++ * a step that cannot paint must not change how the kernel boots.
 ++ */
 ++static unsigned int alpha_mark_next = 0;
-+ 
-+-#include <san/kasan.h>
+++
 ++static void
 ++alpha_mark(void)
 ++{
@@ -1948,18 +1849,19 @@ new file mode 100644
 ++	vm_size_t   ht = (vm_size_t)PE_state.video.v_height;
 ++	uint32_t   *fb;
 ++	unsigned int cell = alpha_mark_next++;
-++	vm_size_t   y;
-++	int         row;
-++	int         col;
 ++
 ++	/*
-++	 * io_map() allocates its mapping from kernel_map, which only exists once
-++	 * vm_mem_bootstrap() has run kmem_init(). The first few steps happen before
-++	 * that, and mapping there would take the kernel down before it can say so.
+++	 * io_map() allocates the mapping from kernel_map, which only exists after
+++	 * vm_mem_bootstrap() ran kmem_init(). Mapping before that would take the
+++	 * kernel down before it could say why.
 ++	 */
 ++	if (kernel_map == VM_MAP_NULL) {
 ++		return;
 ++	}
+++	vm_size_t   y;
+++	int         row;
+++	int         col;
+++
 ++	if (pa == 0 || rb == 0 || ht == 0 || cell >= 32) {
 ++		return;
 ++	}
@@ -1975,12 +1877,19 @@ new file mode 100644
 ++		}
 ++	}
 ++}
-+ 
-+-#include <i386/pmCPU.h>
-+ static void             kernel_bootstrap_thread(void);
-+ 
-+ static void             load_context(
-+@@ -218,9 +166,151 @@
+++
++ #include <mach/thread_act.h>
++ #include <mach/task_special_ports.h>
++ #include <mach/vm_param.h>
++@@ -78,6 +129,7 @@
++ #include <kern/mach_param.h>
++ #include <kern/misc_protos.h>
++ #include <kern/clock.h>
+++#include <arm64/alphaplus_probe.h>
++ #include <kern/coalition.h>
++ #include <kern/cpu_number.h>
++ #include <kern/cpu_quiesce.h>
++@@ -218,9 +270,151 @@
 + 
 + TUNABLE(startup_debug_t, startup_debug, "startup_debug", 0);
 + 
@@ -2132,7 +2041,7 @@ new file mode 100644
 + 	if ((startup_debug & STARTUP_DEBUG_VERBOSE) &&
 + 	    startup_phase >= STARTUP_SUB_KPRINTF) {
 + 		kprintf("kernel_bootstrap: %s\n", message);
-+@@ -231,6 +321,8 @@
++@@ -231,6 +425,8 @@
 + static inline void
 + kernel_bootstrap_thread_log(const char *message)
 + {
@@ -2141,7 +2050,7 @@ new file mode 100644
 + 	if ((startup_debug & STARTUP_DEBUG_VERBOSE) &&
 + 	    startup_phase >= STARTUP_SUB_KPRINTF) {
 + 		kprintf("kernel_bootstrap_thread: %s\n", message);
-+@@ -787,7 +879,9 @@
++@@ -787,7 +983,9 @@
 + 	 *	Start the user bootstrap.
 + 	 */
 + #ifdef  MACH_BSD
@@ -2153,7 +2062,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/pexpert/arm/pe_init.c xnu-m/pexpert/arm/pe_init.c
 +--- a/pexpert/arm/pe_init.c	2026-11-07 23:09:19.651106070 +0800
-++++ b/pexpert/arm/pe_init.c	2026-11-08 10:32:18.910739688 +0800
+++++ b/pexpert/arm/pe_init.c	2026-11-08 10:44:35.016378207 +0800
 +@@ -22,6 +22,8 @@
 + 
 + #include <pexpert/arm64/board_config.h>
