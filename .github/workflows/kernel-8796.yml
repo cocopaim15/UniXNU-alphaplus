@@ -93,6 +93,30 @@ jobs:
             echo "$(brew --prefix unifdef)/bin" >> "$GITHUB_PATH"
           fi
 
+      # Xcode 26 的 iig 会生成 8796 不认的 IORPC.kernelContent。UniXNU 在 Linux 上
+      # 用的是开源的 iig-port（同一份 iig 源码移植），这里把它编出来并用 IIG= 覆盖：
+      # makedefs/MakeInc.cmd 里是 `ifeq ($(origin IIG),undefined)`，环境变量能盖过。
+      - name: Build iig-port and override IIG
+        run: |
+          set -euo pipefail
+          LLVM_DIR="$(brew --prefix llvm)"
+          SRC="$RUNNER_TEMP/iig-port"
+          rm -rf "$SRC"
+          git clone -q https://github.com/Nyktis/iig-port.git "$SRC"
+          git -C "$SRC" fetch -q --depth 1 origin ea6d147d668ca15d490da638012243fcd705f30d
+          git -C "$SRC" checkout -q ea6d147d668ca15d490da638012243fcd705f30d
+          RES="$(ls -d "$LLVM_DIR"/lib/clang/*/include | head -n 1)"
+          echo "clang resource dir: $RES"
+          "$LLVM_DIR/bin/clang++" -std=c++17 -O2 \
+            -I"$LLVM_DIR/include" \
+            -DUNIXNU_CLANG_RESOURCE_DIR="\"$RES\"" \
+            "$SRC/iig.cpp" \
+            -L"$LLVM_DIR/lib" -Wl,-rpath,"$LLVM_DIR/lib" -lclang \
+            -o "$RUNNER_TEMP/iig"
+          "$RUNNER_TEMP/iig" --version 2>&1 | head -n 3 || true
+          echo "IIG=$RUNNER_TEMP/iig" >> "$GITHUB_ENV"
+          echo "IIG override: $RUNNER_TEMP/iig"
+
       - name: Report the runner toolchain
         run: |
           sw_vers
