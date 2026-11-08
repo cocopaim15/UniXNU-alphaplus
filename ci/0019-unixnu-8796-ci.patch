@@ -850,576 +850,6 @@ index 12f1154..6b80f22 100644
   pmap_sync_page_attributes_phys(
   	ppnum_t pp)
   {
-diff --git a/patches/xnu/zzzz-alphaplus-early-boot-probes.patch b/patches/xnu/zzzz-alphaplus-early-boot-probes.patch
-new file mode 100644
-index 0000000..cd0934b
---- /dev/null
-+++ b/patches/xnu/zzzz-alphaplus-early-boot-probes.patch
-@@ -0,0 +1,564 @@
-+diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
-+index 201050b..b596af7 100644
-+--- a/bsd/kern/bsd_init.c
-++++ b/bsd/kern/bsd_init.c
-+@@ -580,7 +580,9 @@ bsd_init(void)
-+ #if DEBUG_BSDINIT
-+ #define bsd_init_kprintf(x, ...) kprintf("bsd_init: " x, ## __VA_ARGS__)
-+ #else
-+-#define bsd_init_kprintf(x, ...)
-++/* alphaplus bring-up: each step is a alphaplus_reset target, e.g. alphaplus_reset=calling_vfsinit */
-++extern void alphaplus_probe_step(const char *message);
-++#define bsd_init_kprintf(x, ...) alphaplus_probe_step(x)
-+ #endif
-+ 
-+ 	throttle_init();
-+diff --git a/iokit/Kernel/IOPlatformExpert.cpp b/iokit/Kernel/IOPlatformExpert.cpp
-+index 7a32a23..a76ad86 100644
-+--- a/iokit/Kernel/IOPlatformExpert.cpp
-++++ b/iokit/Kernel/IOPlatformExpert.cpp
-+@@ -62,6 +62,8 @@ extern "C" {
-+ #include <pexpert/pexpert.h>
-+ #include <uuid/uuid.h>
-+ #include <sys/sysctl.h>
-++
-++extern "C" void alphaplus_probe_step(const char *message); /* osfmk/kern/startup.c, alphaplus bring-up */
-+ }
-+ 
-+ #define kShutdownTimeout    30 //in secs
-+@@ -2130,7 +2132,9 @@ IOPlatformExpertDevice::free()
-+ void
-+ IOPlatformExpertDevice::configureDefaults( void )
-+ {
-++	alphaplus_probe_step("pe_defaults_entry");
-+ 	createNVRAM();
-++	alphaplus_probe_step("pe_nvram_done");
-+ 	// Parse the serial-number data and publish a user-readable string
-+ 	OSData* mydata = (OSData*) (getProperty("serial-number"));
-+ 	if (mydata != NULL) {
-+@@ -2140,7 +2144,9 @@ IOPlatformExpertDevice::configureDefaults( void )
-+ 			serNoString->release();
-+ 		}
-+ 	}
-++	alphaplus_probe_step("pe_serial_done");
-+ 	generatePlatformUUID();
-++	alphaplus_probe_step("pe_uuid_done");
-+ }
-+ 
-+ void
-+@@ -2162,9 +2168,13 @@ IOPlatformExpertDevice::createNVRAM( void )
-+ 
-+ 	assert(gIOOptionsEntry != NULL);
-+ 
-++	alphaplus_probe_step("nvram_new");
-+ 	gIOOptionsEntry->init(options, gIODTPlane);
-++	alphaplus_probe_step("nvram_init");
-+ 	gIOOptionsEntry->attach(this);
-++	alphaplus_probe_step("nvram_attach");
-+ 	gIOOptionsEntry->start(this);
-++	alphaplus_probe_step("nvram_start");
-+ 	options->release();
-+ }
-+ 
-+diff --git a/osfmk/arm/arm_init.c b/osfmk/arm/arm_init.c
-+index b87eef7..56fd5c1 100644
-+--- a/osfmk/arm/arm_init.c
-++++ b/osfmk/arm/arm_init.c
-+@@ -38,6 +38,7 @@
-+ #include <kern/timer_queue.h>
-+ #include <kern/processor.h>
-+ #include <kern/startup.h>
-++#include <arm64/alphaplus_probe.h>
-+ #include <kern/debug.h>
-+ #include <prng/random.h>
-+ #include <kern/ecc.h>
-+@@ -346,9 +347,11 @@ arm_init(
-+ 	DTEntry chosen = NULL;
-+ 	unsigned int dt_entry_size = 0;
-+ 
-++	ALPHA_PROBE_POINT(ALPHA_PROBE_AT_ARM_INIT);
-+ 	arm_setup_pre_sign();
-+ 
-+ 	arm_slide_rebase_and_sign_image();
-++	ALPHA_PROBE_POINT(ALPHA_PROBE_AT_REBASED);
-+ 
-+ 	/* If kernel integrity is supported, use a constant copy of the boot args. */
-+ 	const_boot_args = *args;
-+@@ -362,6 +365,7 @@ arm_init(
-+ #endif /* defined(HAS_APPLE_PAC) */
-+ 
-+ 	PE_init_platform(FALSE, args); /* Get platform expert set up */
-++	ALPHA_PROBE_POINT(ALPHA_PROBE_AT_PE_INIT);
-+ 
-+ #if __arm64__
-+ 	configure_timer_apple_regs();
-+@@ -524,6 +528,7 @@ arm_init(
-+ #endif  /* __ARM_PAN_AVAILABLE__ */
-+ 
-+ 	arm_vm_init(xmaxmem, args);
-++	ALPHA_PROBE_POINT(ALPHA_PROBE_AT_VM_INIT);
-+ 
-+ 	if (debug_boot_arg) {
-+ 		patch_low_glo();
-+@@ -537,7 +542,9 @@ arm_init(
-+ 
-+ 	/* Setup debugging output. */
-+ 	const unsigned int serial_exists = serial_init();
-++	ALPHA_PROBE_POINT(ALPHA_PROBE_AT_SERIAL_INIT);
-+ 	kernel_startup_initialize_upto(STARTUP_SUB_KPRINTF);
-++	ALPHA_PROBE_POINT(ALPHA_PROBE_AT_KPRINTF);
-+ 	kprintf("kprintf initialized\n");
-+ 
-+ 	serialmode = 0;
-+@@ -582,6 +589,7 @@ arm_init(
-+ 
-+ 	/* setup console output */
-+ 	PE_init_printf(FALSE);
-++	ALPHA_PROBE_POINT(ALPHA_PROBE_AT_PRINTF);
-+ 
-+ #if __arm64__
-+ #if DEBUG
-+@@ -657,6 +665,7 @@ arm_init(
-+ 	 * against string vulnerabilities
-+ 	 */
-+ 	__stack_chk_guard &= ~(0xFFULL << 8);
-++	ALPHA_PROBE_POINT(ALPHA_PROBE_AT_MACHINE_STARTUP);
-+ 	machine_startup(args);
-+ }
-+ 
-+diff --git a/osfmk/arm64/alphaplus_probe.h b/osfmk/arm64/alphaplus_probe.h
-+new file mode 100644
-+index 0000000..9eb69ca
-+--- /dev/null
-++++ b/osfmk/arm64/alphaplus_probe.h
-+@@ -0,0 +1,62 @@
-++/*
-++ * alphaplus early boot probes: where the timed reset is placed.
-++ *
-++ * Once the MMU is on the frame buffer is not mapped, so the signal is time:
-++ * the CPU waits ALPHA_PROBE_RESET_SECONDS and then calls PSCI SYSTEM_RESET.
-++ * A reboot after that delay means the boot got to the selected point.
-++ * Exactly one point is active; 0 disables the reset.
-++ */
-++#ifndef _ARM64_ALPHA_PROBE_H_
-++#define _ARM64_ALPHA_PROBE_H_
-++
-++#define ALPHA_PROBE_AT_NONE             0
-++#define ALPHA_PROBE_AT_MMU_ON           1       /* start.s: right after msr SCTLR_EL1 */
-++#define ALPHA_PROBE_AT_COMMON_START_RET 2       /* start.s: before the ret to arm_init */
-++#define ALPHA_PROBE_AT_ARM_INIT         3       /* arm_init.c: first statement */
-++#define ALPHA_PROBE_AT_REBASED          4       /* arm_init.c: after arm_slide_rebase_and_sign_image */
-++#define ALPHA_PROBE_AT_PE_INIT          5       /* arm_init.c: after PE_init_platform(FALSE) */
-++#define ALPHA_PROBE_AT_VM_INIT          6       /* arm_init.c: after arm_vm_init */
-++#define ALPHA_PROBE_AT_KVA_CHECK        7       /* start.s: before ret, translate arm_init's KVA with AT S1E1R */
-++#define ALPHA_PROBE_AT_SERIAL_INIT      8       /* arm_init.c: after serial_init */
-++#define ALPHA_PROBE_AT_KPRINTF          9       /* arm_init.c: after kernel_startup_initialize_upto(KPRINTF) */
-++#define ALPHA_PROBE_AT_PRINTF           10      /* arm_init.c: after PE_init_printf(FALSE) */
-++#define ALPHA_PROBE_AT_MACHINE_STARTUP  11      /* arm_init.c: just before machine_startup */
-++
-++#define ALPHA_PROBE_RESET_AT            ALPHA_PROBE_AT_NONE
-++/* Bands 9-10 (MMU off): Mach header PA and the first word at arm_init's PA, as 32 bit columns. */
-++#define ALPHA_PROBE_DUMP_PA             0
-++#define ALPHA_PROBE_RESET_SECONDS       3       /* well inside the secure watchdog window (a 10 s wait was bitten) */
-++#define ALPHA_PROBE_TIMEBASE            19200000
-++
-++#ifndef __ASSEMBLER__
-++#include <stdint.h>
-++
-++/* Same sequence as ALPHA_PROBE_RESET in start.s. */
-++static inline void __attribute__((noreturn, always_inline))
-++alphaplus_probe_reset(void)
-++{
-++	uint64_t now, end;
-++
-++	__asm__ volatile ("isb\n\tmrs %0, CNTPCT_EL0" : "=r"(now));
-++	end = now + (uint64_t)ALPHA_PROBE_TIMEBASE * ALPHA_PROBE_RESET_SECONDS;
-++	do {
-++		__asm__ volatile ("isb\n\tmrs %0, CNTPCT_EL0" : "=r"(now));
-++	} while (now < end);
-++	__asm__ volatile (
-++		"mov	x0, #0x0009\n"
-++		"movk	x0, #0x8400, lsl #16\n"         /* PSCI_SYSTEM_RESET */
-++		"mov	x1, xzr\n"
-++		"mov	x2, xzr\n"
-++		"mov	x3, xzr\n"
-++		"smc	#0\n"
-++		::: "x0", "x1", "x2", "x3", "memory");
-++	for (;;) {
-++		__asm__ volatile ("wfe");
-++	}
-++}
-++
-++#define ALPHA_PROBE_POINT(point) \
-++	do { if (ALPHA_PROBE_RESET_AT == (point)) { alphaplus_probe_reset(); } } while (0)
-++#endif /* __ASSEMBLER__ */
-++
-++#endif /* _ARM64_ALPHA_PROBE_H_ */
-+diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
-+index 6bfc3cd..b78ff38 100644
-+--- a/osfmk/arm64/start.s
-++++ b/osfmk/arm64/start.s
-+@@ -90,6 +90,111 @@
-+ #endif /* defined(KERNEL_INTEGRITY_KTRR) */
-+ .endmacro
-+ 
-++/*
-++ * alphaplus early boot probes (MMU off only).
-++ *
-++ * Same layout as UniXNU scripts/patch-xnu-entry-probe.py: the frame buffer is
-++ * split into 1/16 bands; band 0 is DarwinBoot's green band and stage N paints
-++ * band N, so the bars stack below the green one in execution order. The base,
-++ * row bytes and height come from boot_args.Video (0x28, 0x38, 0x48).
-++ * Clobbers x10-x15 and the flags.
-++ */
-++.macro ALPHA_PROBE_BAR args, band, lo, hi
-++	ldr		x10, [\args, #0x28]					// Video.v_baseAddr
-++	ldr		x11, [\args, #0x38]					// Video.v_rowBytes
-++	ldr		x12, [\args, #0x48]					// Video.v_height
-++	mul		x11, x11, x12
-++	lsr		x11, x11, #4						// bytes per band
-++	bic		x11, x11, #7
-++	mov		x13, #\band
-++	mul		x14, x11, x13
-++	add		x10, x10, x14
-++	movz	w15, #\lo
-++	movk	w15, #\hi, lsl #16					// 0xAARRGGBB
-++1:
-++	stp		w15, w15, [x10], #8
-++	subs	x11, x11, #8
-++	b.hi	1b
-++	dsb		sy
-++.endmacro
-++
-++/*
-++ * After the MMU is on the frame buffer is no longer mapped, so the signal is
-++ * time: the reset point is selected by ALPHA_PROBE_RESET_AT in alphaplus_probe.h.
-++ */
-++#include "alphaplus_probe.h"
-++
-++/*
-++ * Draw x9[31:0] as 32 columns across band \band, MSB on the left:
-++ * white = 1, grey = 0, a 4-pixel black gap before each column.
-++ * MMU off only. Clobbers x1, x10-x17 and the flags.
-++ */
-++.macro ALPHA_PROBE_BITS args, band
-++	ldr		x10, [\args, #0x28]					// Video.v_baseAddr
-++	ldr		x11, [\args, #0x38]					// Video.v_rowBytes
-++	ldr		x12, [\args, #0x48]					// Video.v_height
-++	ldr		x1, [\args, #0x40]					// Video.v_width
-++	lsr		x12, x12, #4						// rows per band
-++	mov		x14, #\band
-++	mul		x14, x14, x12
-++	madd	x10, x14, x11, x10					// first row of the band
-++	lsr		x13, x1, #5							// column width
-++1:
-++	mov		x14, xzr
-++	mov		x15, x10
-++2:
-++	udiv	x16, x14, x13
-++	cmp		x16, #32
-++	b.hs	4f
-++	msub	x17, x16, x13, x14
-++	cmp		x17, #4
-++	b.lo	4f
-++	mov		x17, #31
-++	sub		x17, x17, x16
-++	lsr		x17, x9, x17
-++	tbz		x17, #0, 3f
-++	movz	w17, #0xFFFF
-++	movk	w17, #0xFFFF, lsl #16				// white: 1
-++	b		5f
-++3:
-++	movz	w17, #0x4040
-++	movk	w17, #0xFF40, lsl #16				// grey: 0
-++	b		5f
-++4:
-++	movz	w17, #0x0000
-++	movk	w17, #0xFF00, lsl #16				// black: gap
-++5:
-++	str		w17, [x15], #4
-++	add		x14, x14, #1
-++	cmp		x14, x1
-++	b.lo	2b
-++	add		x10, x10, x11
-++	subs	x12, x12, #1
-++	b.ne	1b
-++	dsb		sy
-++.endmacro
-++
-++.macro ALPHA_PROBE_RESET seconds=ALPHA_PROBE_RESET_SECONDS
-++	mrs		x1, CNTPCT_EL0
-++	movz	x2, #((ALPHA_PROBE_TIMEBASE * \seconds) & 0xFFFF)
-++	movk	x2, #(((ALPHA_PROBE_TIMEBASE * \seconds) >> 16) & 0xFFFF), lsl #16
-++	add		x2, x1, x2
-++1:
-++	isb
-++	mrs		x1, CNTPCT_EL0
-++	cmp		x1, x2
-++	b.lo	1b
-++	movz	w0, #0x0009
-++	movk	w0, #0x8400, lsl #16				// PSCI_SYSTEM_RESET
-++	mov		x1, xzr
-++	mov		x2, xzr
-++	mov		x3, xzr
-++	smc		#0
-++2:
-++	wfe
-++	b		2b
-++.endmacro
-++
-+ /*
-+  * Checks the reset handler for global and CPU-specific reset-assist functions,
-+  * then jumps to the reset handler with boot args and cpu data. This is copied
-+@@ -462,9 +567,11 @@ start_cpu:
-+ 	.globl EXT(start_first_cpu)
-+ LEXT(start_first_cpu)
-+ 
-++	ALPHA_PROBE_BAR x0, 1, 0x0000, 0xFFFF		// 1 red: start_first_cpu entry
-+ 	// Unlock the core for debugging
-+ 	msr		OSLAR_EL1, xzr
-+ 	msr		DAIFSet, #(DAIFSC_ALL)				// Disable all interrupts
-++	ALPHA_PROBE_BAR x0, 2, 0x8000, 0xFFFF		// 2 orange: interrupts masked
-+ 
-+ 	mov		x20, x0
-+ 	mov		x21, #0
-+@@ -473,6 +580,7 @@ LEXT(start_first_cpu)
-+ 	adrp	x0, EXT(LowExceptionVectorBase)@page
-+ 	add		x0, x0, EXT(LowExceptionVectorBase)@pageoff
-+ 	MSR_VBAR_EL1_X0
-++	ALPHA_PROBE_BAR x20, 3, 0xFF00, 0xFFFF		// 3 yellow: low exception vectors
-+ 
-+ 
-+ 	// Get the kernel memory parameters from the boot args
-+@@ -487,6 +595,7 @@ LEXT(start_first_cpu)
-+ 	// in ml_parse_cpu_topology(), which happens later in bootstrap.
-+ 	msr		TPIDRRO_EL0, xzr
-+ 	msr		TPIDR_EL0, xzr
-++	ALPHA_PROBE_BAR x20, 4, 0xFFFF, 0xFFFF		// 4 white: boot args read
-+ 
-+ 	// Set up exception stack pointer
-+ 	adrp	x0, EXT(excepstack_top)@page		// Load top of exception stack
-+@@ -510,6 +619,7 @@ LEXT(start_first_cpu)
-+ 	sub		x0, x0, x23
-+ 	msr		SPSel, #0							// Set SP_EL0 to interrupt stack
-+ 	mov		sp, x0
-++	ALPHA_PROBE_BAR x20, 5, 0xFFFF, 0xFF00		// 5 cyan: exception and interrupt stacks
-+ 
-+ 	// Load address to the C init routine into link register
-+ 	adrp	lr, EXT(arm_init)@page
-+@@ -625,6 +735,7 @@ Lbootstrap_tables_ready:
-+ 	dsb		ish
-+ 
-+ 
-++	ALPHA_PROBE_BAR x20, 6, 0x00FF, 0xFF00		// 6 blue: bootstrap page tables
-+ 	b		common_start
-+ 
-+ /*
-+@@ -693,6 +804,9 @@ common_start:
-+ 	mov		x1, #(MAIR_POSTED_COMBINED_REORDERED << MAIR_ATTR_SHIFT(CACHE_ATTRINDX_POSTED_COMBINED_REORDERED))
-+ 	orr		x0, x0, x1
-+ 	msr		MAIR_EL1, x0
-++	cbnz	x21, Lalphaplus_probe_7_done
-++	ALPHA_PROBE_BAR x20, 7, 0x00FF, 0xFFFF		// 7 magenta: TCR, TTBR0/1 and MAIR set
-++Lalphaplus_probe_7_done:
-+ 	isb
-+ 	tlbi	vmalle1
-+ 	dsb		ish
-+@@ -752,10 +866,32 @@ common_start:
-+ 	PAC_INIT_KEY_STATE tmp=x0, tmp2=x1
-+ #endif /* HAS_APPLE_PAC */
-+ 
-++	cbnz	x21, Lalphaplus_probe_8_done
-++	ALPHA_PROBE_BAR x20, 8, 0x8080, 0xFF80		// 8 grey: final vectors, MMU still off
-++Lalphaplus_probe_8_done:
-++#if ALPHA_PROBE_DUMP_PA
-++	// Still MMU off. Band 9: PA of the Mach header >> 12 (x23 after the base fix-up).
-++	// Band 10: the first word at arm_init's PA (lr - x22 + x23). If that load
-++	// cannot complete, band 10 never appears.
-++	cbnz	x21, Lalphaplus_dump_done
-++	lsr		x9, x23, #12
-++	ALPHA_PROBE_BITS x20, 9
-++	sub		x9, lr, x22
-++	add		x9, x9, x23
-++	ldr		w9, [x9]
-++	ALPHA_PROBE_BITS x20, 10
-++Lalphaplus_dump_done:
-++#endif
-++
-+ 	// Enable caches, MMU, ROP and JOP
-+ 	MOV64   x0, SCTLR_EL1_DEFAULT
-+ 	MSR_SCTLR_EL1_X0
-+ 	isb		sy
-++#if ALPHA_PROBE_RESET_AT == ALPHA_PROBE_AT_MMU_ON
-++	cbnz	x21, Lalphaplus_probe_reset_done
-++	ALPHA_PROBE_RESET							// MMU and caches on
-++Lalphaplus_probe_reset_done:
-++#endif
-+ 
-+ #if !VMAPPLE
-+ 	MOV64   x1, SCTLR_EL1_DEFAULT
-+@@ -821,6 +957,32 @@ common_start:
-+ 	mov	lr, x21
-+ #endif
-+ 
-++#if ALPHA_PROBE_RESET_AT == ALPHA_PROBE_AT_KVA_CHECK
-++	/*
-++	 * Still on the V=P map: ask the MMU to translate lr (arm_init's KVA) without
-++	 * fetching from it. PAR_EL1.F = 1 -> stay here (the watchdog bites);
-++	 * translation to the expected PA (lr - x22 + x23) -> reset after 2 s;
-++	 * translation to another PA -> reset after 5 s.
-++	 */
-++	at		s1e1r, lr
-++	isb
-++	mrs		x9, PAR_EL1
-++	tbnz	x9, #0, Lalphaplus_kva_fault
-++	ubfx	x9, x9, #12, #36					// PAR_EL1.PA[47:12]
-++	sub		x10, lr, x22
-++	add		x10, x10, x23
-++	ubfx	x10, x10, #12, #36
-++	cmp		x9, x10
-++	b.ne	Lalphaplus_kva_wrong_pa
-++	ALPHA_PROBE_RESET 2
-++Lalphaplus_kva_wrong_pa:
-++	ALPHA_PROBE_RESET 5
-++Lalphaplus_kva_fault:
-++	b		Lalphaplus_kva_fault
-++#endif
-++#if ALPHA_PROBE_RESET_AT == ALPHA_PROBE_AT_COMMON_START_RET
-++	ALPHA_PROBE_RESET 5							// about to return to arm_init (cold boot only); 5 s to read bands 9-10
-++#endif
-+ 	// Return to arm_init()
-+ 	ret
-+ 
-+diff --git a/osfmk/kern/startup.c b/osfmk/kern/startup.c
-+index b790d0d..2a17f27 100644
-+--- a/osfmk/kern/startup.c
-++++ b/osfmk/kern/startup.c
-+@@ -78,6 +78,7 @@
-+ #include <kern/mach_param.h>
-+ #include <kern/misc_protos.h>
-+ #include <kern/clock.h>
-++#include <arm64/alphaplus_probe.h>
-+ #include <kern/coalition.h>
-+ #include <kern/cpu_number.h>
-+ #include <kern/cpu_quiesce.h>
-+@@ -218,9 +219,46 @@ extern int serverperfmode;
-+ 
-+ TUNABLE(startup_debug_t, startup_debug, "startup_debug", 0);
-+ 
-++/*
-++ * alphaplus bring-up: boot-arg alphaplus_reset=<step> resets the device (after the
-++ * probe delay) when kernel_bootstrap{,_thread}_log() is called with that step
-++ * name, e.g. alphaplus_reset=sched_init or a startup subsystem name such as
-++ * alphaplus_reset=zalloc. A bisection then only needs a different boot-arg.
-++ * Other files call it as alphaplus_probe_step() for their own named steps.
-++ */
-++void alphaplus_probe_step(const char *message);
-++void
-++alphaplus_probe_step(const char *message)
-++{
-++	static int  parsed;
-++	static char target[64];
-++
-++	if (!parsed) {
-++		parsed = 1;
-++		if (!PE_parse_boot_arg_str("alphaplus_reset", target, sizeof(target))) {
-++			target[0] = '\0';
-++		}
-++	}
-++	if (target[0] == '\0') {
-++		return;
-++	}
-++	/* Boot-args cannot carry spaces or newlines: a space matches '_', a trailing newline is ignored. */
-++	size_t i = 0;
-++	for (; target[i] != '\0'; i++) {
-++		char c = message[i] == ' ' ? '_' : message[i];
-++		if (c != target[i]) {
-++			return;
-++		}
-++	}
-++	if (message[i] == '\0' || (message[i] == '\n' && message[i + 1] == '\0')) {
-++		alphaplus_probe_reset();
-++	}
-++}
-++
-+ static inline void
-+ kernel_bootstrap_log(const char *message)
-+ {
-++	alphaplus_probe_step(message);
-+ 	if ((startup_debug & STARTUP_DEBUG_VERBOSE) &&
-+ 	    startup_phase >= STARTUP_SUB_KPRINTF) {
-+ 		kprintf("kernel_bootstrap: %s\n", message);
-+@@ -231,6 +269,7 @@ kernel_bootstrap_log(const char *message)
-+ static inline void
-+ kernel_bootstrap_thread_log(const char *message)
-+ {
-++	alphaplus_probe_step(message);
-+ 	if ((startup_debug & STARTUP_DEBUG_VERBOSE) &&
-+ 	    startup_phase >= STARTUP_SUB_KPRINTF) {
-+ 		kprintf("kernel_bootstrap_thread: %s\n", message);
-+@@ -787,7 +826,9 @@ kernel_bootstrap_thread(void)
-+ 	 *	Start the user bootstrap.
-+ 	 */
-+ #ifdef  MACH_BSD
-++	alphaplus_probe_step("bsd_init_entry");
-+ 	bsd_init();
-++	alphaplus_probe_step("bsd_init_done");
-+ #endif
-+ 
-+ 
-+diff --git a/pexpert/arm/pe_init.c b/pexpert/arm/pe_init.c
-+index e86dd5c..dfcc4c0 100644
-+--- a/pexpert/arm/pe_init.c
-++++ b/pexpert/arm/pe_init.c
-+@@ -22,6 +22,8 @@
-+ 
-+ #include <pexpert/arm64/board_config.h>
-+ 
-++extern void alphaplus_probe_step(const char *message); /* osfmk/kern/startup.c, alphaplus bring-up */
-++
-+ 
-+ /* extern references */
-+ extern void     pe_identify_machine(boot_args *bootArgs);
-+@@ -255,7 +257,9 @@ PE_init_iokit(void)
-+ 	uint32_t        load_kernel_start_value = 0;
-+ 	uint32_t        populate_registry_time_value = 0;
-+ 
-++	alphaplus_probe_step("iokit_entry");
-+ 	PE_init_printf(TRUE);
-++	alphaplus_probe_step("iokit_printf");
-+ 
-+ 	printf("iBoot version: %s\n", iBoot_version);
-+ #if defined(TARGET_OS_OSX) && defined(__arm64__)
-+@@ -280,6 +284,7 @@ PE_init_iokit(void)
-+ 	}
-+ 
-+ 	pe_prepare_images();
-++	alphaplus_probe_step("iokit_images");
-+ 
-+ 	scale = PE_state.video.v_scale;
-+ 	flip = 1;
-+@@ -368,8 +373,11 @@ PE_init_iokit(void)
-+ 		KDBG_RELEASE(IOKDBG_CODE(DBG_BOOTER, 0), start_time_value, debug_wait_start_value, load_kernel_start_value, populate_registry_time_value);
-+ 	}
-+ 
-++	alphaplus_probe_step("iokit_before_init");
-+ 	InitIOKit(PE_state.deviceTreeHead);
-++	alphaplus_probe_step("iokit_initiokit");
-+ 	ConfigureIOKit();
-++	alphaplus_probe_step("iokit_configured");
-+ }
-+ 
-+ void
-+@@ -387,8 +395,11 @@ PE_lockdown_iokit(void)
-+ 	 * against a kernel which has not yet enabled the full set of available
-+ 	 * hardware protections.
-+ 	 */
-++	alphaplus_probe_step("iokit_lockdown_entry");
-+ 	zalloc_iokit_lockdown();
-++	alphaplus_probe_step("iokit_lockdown_zalloc");
-+ 	StartIOKitMatching();
-++	alphaplus_probe_step("iokit_matching_started");
-+ }
-+ 
-+ void
 diff --git a/scripts/build-arm-driver.py b/scripts/build-arm-driver.py
 index 4dcaa91..aef7ad9 100644
 --- a/scripts/build-arm-driver.py
@@ -1787,31 +1217,156 @@ index 19558bd..4d95293 100644
      build_archives(ctx, env)
      run(['bash', script], cwd=ctx.tree, env=env, log_file=ctx.logs / 'kernel.log')
  
-diff --git a/patches/xnu/zzzzz-alphaplus-stop-probes.patch b/patches/xnu/zzzzz-alphaplus-stop-probes.patch
+diff --git a/patches/xnu/zzzzzzz-alphaplus-newer-clang.patch b/patches/xnu/zzzzzzz-alphaplus-newer-clang.patch
 new file mode 100644
 --- /dev/null
-+++ b/patches/xnu/zzzzz-alphaplus-stop-probes.patch
-@@ -0,0 +1,227 @@
-+--- a/osfmk/arm/arm_init.c	2026-11-07 23:10:12.226293957 +0800
-++++ b/osfmk/arm/arm_init.c	2026-11-07 23:11:17.783109914 +0800
-+@@ -348,6 +348,8 @@
++++ b/patches/xnu/zzzzzzz-alphaplus-newer-clang.patch
+@@ -0,0 +1,10 @@
++--- a/makedefs/MakeInc.def
+++++ b/makedefs/MakeInc.def
++@@ -306,7 +306,6 @@
++ 	-fno-builtin \
++ 	-fno-common \
++ 	-ftrivial-auto-var-init=zero \
++-	-enable-trivial-auto-var-init-zero-knowing-it-will-be-removed-from-clang \
++ 	-fsigned-bitfields \
++ 	-fmerge-all-constants \
++ 	-fno-c++-static-destructors \
+diff --git a/patches/xnu/zzzzzzzz-alphaplus-iig-kernelcontent.patch b/patches/xnu/zzzzzzzz-alphaplus-iig-kernelcontent.patch
+new file mode 100644
+--- /dev/null
++++ b/patches/xnu/zzzzzzzz-alphaplus-iig-kernelcontent.patch
+@@ -0,0 +1,30 @@
++--- a/iokit/DriverKit/IORPC.h
+++++ b/iokit/DriverKit/IORPC.h
++@@ -224,6 +224,12 @@
++ 	IORPCMessageMach * reply;
++ 	uint32_t           sendSize;
++ 	uint32_t           replySize;
+++	/*
+++	 * Newer iig (DriverKit-440 and later) marshals the kernel side header
+++	 * through this member; 8796 does not have it, so a newer iig cannot
+++	 * build the kernel. The fields above keep their offsets.
+++	 */
+++	IORPCMessage      *kernelContent;
++ };
++ typedef struct IORPC IORPC;
++ 
++--- a/iokit/IOKit/IORPC.h
+++++ b/iokit/IOKit/IORPC.h
++@@ -224,6 +224,12 @@
++ 	IORPCMessageMach * reply;
++ 	uint32_t           sendSize;
++ 	uint32_t           replySize;
+++	/*
+++	 * Newer iig (DriverKit-440 and later) marshals the kernel side header
+++	 * through this member; 8796 does not have it, so a newer iig cannot
+++	 * build the kernel. The fields above keep their offsets.
+++	 */
+++	IORPCMessage      *kernelContent;
++ };
++ typedef struct IORPC IORPC;
++ 
+diff --git a/patches/xnu/zzzz-alphaplus-bringup.patch b/patches/xnu/zzzz-alphaplus-bringup.patch
+new file mode 100644
+--- /dev/null
++++ b/patches/xnu/zzzz-alphaplus-bringup.patch
+@@ -0,0 +1,782 @@
++diff -ruN '--exclude=.git' /root/xnu-ref/bsd/kern/bsd_init.c xnu-m/bsd/kern/bsd_init.c
++--- a/bsd/kern/bsd_init.c	2026-11-07 23:09:19.257722188 +0800
+++++ b/bsd/kern/bsd_init.c	2026-11-08 09:18:11.522189487 +0800
++@@ -495,7 +495,9 @@
++ #if DEBUG_BSDINIT
++ #define bsd_init_kprintf(x, ...) kprintf("bsd_init: " x, ## __VA_ARGS__)
++ #else
++-#define bsd_init_kprintf(x, ...)
+++/* alphaplus bring-up: each step is a alphaplus_reset target, e.g. alphaplus_reset=calling_vfsinit */
+++extern void alphaplus_probe_step(const char *message);
+++#define bsd_init_kprintf(x, ...) alphaplus_probe_step(x)
++ #endif
++ 
++ 	throttle_init();
++diff -ruN '--exclude=.git' /root/xnu-ref/iokit/Kernel/IOPlatformExpert.cpp xnu-m/iokit/Kernel/IOPlatformExpert.cpp
++--- a/iokit/Kernel/IOPlatformExpert.cpp	2026-11-07 23:09:19.453187527 +0800
+++++ b/iokit/Kernel/IOPlatformExpert.cpp	2026-11-08 09:18:11.522189487 +0800
++@@ -62,6 +62,8 @@
++ #include <pexpert/pexpert.h>
++ #include <uuid/uuid.h>
++ #include <sys/sysctl.h>
+++
+++extern "C" void alphaplus_probe_step(const char *message); /* osfmk/kern/startup.c, alphaplus bring-up */
++ }
++ 
++ #define kShutdownTimeout    30 //in secs
++@@ -2130,7 +2132,9 @@
++ void
++ IOPlatformExpertDevice::configureDefaults( void )
++ {
+++	alphaplus_probe_step("pe_defaults_entry");
++ 	createNVRAM();
+++	alphaplus_probe_step("pe_nvram_done");
++ 	// Parse the serial-number data and publish a user-readable string
++ 	OSData* mydata = (OSData*) (getProperty("serial-number"));
++ 	if (mydata != NULL) {
++@@ -2140,7 +2144,9 @@
++ 			serNoString->release();
++ 		}
++ 	}
+++	alphaplus_probe_step("pe_serial_done");
++ 	generatePlatformUUID();
+++	alphaplus_probe_step("pe_uuid_done");
++ }
++ 
++ void
++@@ -2162,9 +2168,13 @@
++ 
++ 	assert(gIOOptionsEntry != NULL);
++ 
+++	alphaplus_probe_step("nvram_new");
++ 	gIOOptionsEntry->init(options, gIODTPlane);
+++	alphaplus_probe_step("nvram_init");
++ 	gIOOptionsEntry->attach(this);
+++	alphaplus_probe_step("nvram_attach");
++ 	gIOOptionsEntry->start(this);
+++	alphaplus_probe_step("nvram_start");
++ 	options->release();
++ }
++ 
++diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/arm/arm_init.c xnu-m/osfmk/arm/arm_init.c
++--- a/osfmk/arm/arm_init.c	2026-11-07 23:09:19.530183852 +0800
+++++ b/osfmk/arm/arm_init.c	2026-11-08 09:18:11.524431713 +0800
++@@ -38,6 +38,7 @@
++ #include <kern/timer_queue.h>
++ #include <kern/processor.h>
++ #include <kern/startup.h>
+++#include <arm64/alphaplus_probe.h>
++ #include <kern/debug.h>
++ #include <prng/random.h>
++ #include <kern/ecc.h>
++@@ -346,9 +347,13 @@
++ 	DTEntry chosen = NULL;
 + 	unsigned int dt_entry_size = 0;
 + 
-+ 	ALPHA_PROBE_POINT(ALPHA_PROBE_AT_ARM_INIT);
+++	ALPHA_PROBE_POINT(ALPHA_PROBE_AT_ARM_INIT);
 ++	alphaplus_probe_stop_init(args->CommandLine);
 ++	ALPHA_STOP(ALPHA_STOP_ARM_INIT);
 + 	arm_setup_pre_sign();
 + 
 + 	arm_slide_rebase_and_sign_image();
-+@@ -366,6 +368,7 @@
+++	ALPHA_PROBE_POINT(ALPHA_PROBE_AT_REBASED);
++ 
++ 	/* If kernel integrity is supported, use a constant copy of the boot args. */
++ 	const_boot_args = *args;
++@@ -362,6 +367,8 @@
++ #endif /* defined(HAS_APPLE_PAC) */
 + 
 + 	PE_init_platform(FALSE, args); /* Get platform expert set up */
-+ 	ALPHA_PROBE_POINT(ALPHA_PROBE_AT_PE_INIT);
+++	ALPHA_PROBE_POINT(ALPHA_PROBE_AT_PE_INIT);
 ++	ALPHA_STOP(ALPHA_STOP_AFTER_PE_INIT);
 + 
 + #if __arm64__
 + 	configure_timer_apple_regs();
-+@@ -389,6 +392,7 @@
++@@ -385,6 +392,7 @@
 + 	}
 + 
 + 	platform_stall_panic_or_spin(PLATFORM_STALL_XNU_LOCATION_ARM_INIT);
@@ -1819,7 +1374,7 @@ new file mode 100644
 + 
 + 	chosen = NULL; // Force a re-lookup later on since VM addresses are not final at this point
 + 	dt_entry_size = 0;
-+@@ -427,10 +431,12 @@
++@@ -423,10 +431,12 @@
 + #endif
 + 
 + 	ml_parse_cpu_topology();
@@ -1832,7 +1387,7 @@ new file mode 100644
 + 
 + 	BootCpuData.cpu_number = (unsigned short)master_cpu;
 + 	BootCpuData.intstack_top = (vm_offset_t) &intstack_top;
-+@@ -443,8 +449,10 @@
++@@ -439,8 +449,10 @@
 + 	CpuDataEntries[master_cpu].cpu_data_paddr = (void *)((uintptr_t)(args->physBase)
 + 	    + ((uintptr_t)&BootCpuData
 + 	    - (uintptr_t)(args->virtBase)));
@@ -1843,7 +1398,7 @@ new file mode 100644
 + 	thread->machine.CpuDatap = &BootCpuData;
 + 	thread->machine.pcpu_data_base = (vm_offset_t)0;
 + 	machine_set_current_thread(thread);
-+@@ -457,11 +465,14 @@
++@@ -453,11 +465,14 @@
 + 	 */
 + 	thread->machine.preemption_count = 0;
 + 	cpu_bootstrap();
@@ -1858,7 +1413,7 @@ new file mode 100644
 + 
 + 	/*
 + 	 * Initialize the timer callout world
-+@@ -471,6 +482,7 @@
++@@ -467,6 +482,7 @@
 + 	cpu_init();
 + 
 + 	processor_bootstrap();
@@ -1866,26 +1421,28 @@ new file mode 100644
 + 
 + 	if (PE_parse_boot_argn("maxmem", &maxmem, sizeof(maxmem))) {
 + 		xmaxmem = (uint64_t) maxmem * (1024 * 1024);
-+@@ -519,6 +531,7 @@
++@@ -514,6 +530,8 @@
++ #endif  /* __ARM_PAN_AVAILABLE__ */
 + 
 + 	arm_vm_init(xmaxmem, args);
-+ 	ALPHA_PROBE_POINT(ALPHA_PROBE_AT_VM_INIT);
+++	ALPHA_PROBE_POINT(ALPHA_PROBE_AT_VM_INIT);
 ++	ALPHA_STOP(ALPHA_STOP_AFTER_VM_INIT);
 + 
 + 	if (debug_boot_arg) {
 + 		patch_low_glo();
-+@@ -533,8 +546,10 @@
++@@ -527,7 +545,11 @@
++ 
 + 	/* Setup debugging output. */
 + 	const unsigned int serial_exists = serial_init();
-+ 	ALPHA_PROBE_POINT(ALPHA_PROBE_AT_SERIAL_INIT);
+++	ALPHA_PROBE_POINT(ALPHA_PROBE_AT_SERIAL_INIT);
 ++	ALPHA_STOP(ALPHA_STOP_AFTER_SERIAL);
 + 	kernel_startup_initialize_upto(STARTUP_SUB_KPRINTF);
-+ 	ALPHA_PROBE_POINT(ALPHA_PROBE_AT_KPRINTF);
+++	ALPHA_PROBE_POINT(ALPHA_PROBE_AT_KPRINTF);
 ++	ALPHA_STOP(ALPHA_STOP_AFTER_KPRINTF);
 + 	kprintf("kprintf initialized\n");
 + 
 + 	serialmode = 0;
-+@@ -576,10 +591,12 @@
++@@ -569,9 +591,12 @@
 + 		disableConsoleOutput = FALSE;     /* Allow printfs to happen */
 + 	}
 + 	PE_create_console();
@@ -1893,25 +1450,85 @@ new file mode 100644
 + 
 + 	/* setup console output */
 + 	PE_init_printf(FALSE);
-+ 	ALPHA_PROBE_POINT(ALPHA_PROBE_AT_PRINTF);
+++	ALPHA_PROBE_POINT(ALPHA_PROBE_AT_PRINTF);
 ++	ALPHA_STOP(ALPHA_STOP_AFTER_PRINTF);
 + 
 + #if __arm64__
 + #if DEBUG
-+@@ -656,6 +673,7 @@
++@@ -647,6 +672,8 @@
++ 	 * against string vulnerabilities
 + 	 */
 + 	__stack_chk_guard &= ~(0xFFULL << 8);
-+ 	ALPHA_PROBE_POINT(ALPHA_PROBE_AT_MACHINE_STARTUP);
+++	ALPHA_PROBE_POINT(ALPHA_PROBE_AT_MACHINE_STARTUP);
 ++	ALPHA_STOP(ALPHA_STOP_BEFORE_MACHINE);
 + 	machine_startup(args);
 + }
 + 
-+--- a/osfmk/arm64/alphaplus_probe.h	2026-11-07 23:10:12.226293957 +0800
-++++ b/osfmk/arm64/alphaplus_probe.h	2026-11-07 23:11:17.774962031 +0800
-+@@ -59,4 +59,40 @@
-+ 	do { if (ALPHA_PROBE_RESET_AT == (point)) { alphaplus_probe_reset(); } } while (0)
-+ #endif /* __ASSEMBLER__ */
-+ 
++diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/arm64/alphaplus_probe.h xnu-m/osfmk/arm64/alphaplus_probe.h
++--- a/osfmk/arm64/alphaplus_probe.h	1970-01-01 08:00:00.000000000 +0800
+++++ b/osfmk/arm64/alphaplus_probe.h	2026-11-08 09:18:11.524508938 +0800
++@@ -0,0 +1,98 @@
+++/*
+++ * alphaplus early boot probes: where the timed reset is placed.
+++ *
+++ * Once the MMU is on the frame buffer is not mapped, so the signal is time:
+++ * the CPU waits ALPHA_PROBE_RESET_SECONDS and then calls PSCI SYSTEM_RESET.
+++ * A reboot after that delay means the boot got to the selected point.
+++ * Exactly one point is active; 0 disables the reset.
+++ */
+++#ifndef _ARM64_ALPHA_PROBE_H_
+++#define _ARM64_ALPHA_PROBE_H_
+++
+++#define ALPHA_PROBE_AT_NONE             0
+++#define ALPHA_PROBE_AT_MMU_ON           1       /* start.s: right after msr SCTLR_EL1 */
+++#define ALPHA_PROBE_AT_COMMON_START_RET 2       /* start.s: before the ret to arm_init */
+++#define ALPHA_PROBE_AT_ARM_INIT         3       /* arm_init.c: first statement */
+++#define ALPHA_PROBE_AT_REBASED          4       /* arm_init.c: after arm_slide_rebase_and_sign_image */
+++#define ALPHA_PROBE_AT_PE_INIT          5       /* arm_init.c: after PE_init_platform(FALSE) */
+++#define ALPHA_PROBE_AT_VM_INIT          6       /* arm_init.c: after arm_vm_init */
+++#define ALPHA_PROBE_AT_KVA_CHECK        7       /* start.s: before ret, translate arm_init's KVA with AT S1E1R */
+++#define ALPHA_PROBE_AT_SERIAL_INIT      8       /* arm_init.c: after serial_init */
+++#define ALPHA_PROBE_AT_KPRINTF          9       /* arm_init.c: after kernel_startup_initialize_upto(KPRINTF) */
+++#define ALPHA_PROBE_AT_PRINTF           10      /* arm_init.c: after PE_init_printf(FALSE) */
+++#define ALPHA_PROBE_AT_MACHINE_STARTUP  11      /* arm_init.c: just before machine_startup */
+++
+++#define ALPHA_PROBE_RESET_AT            ALPHA_PROBE_AT_NONE
+++/* Bands 9-10 (MMU off): Mach header PA and the first word at arm_init's PA, as 32 bit columns. */
+++#define ALPHA_PROBE_DUMP_PA             0
+++#define ALPHA_PROBE_RESET_SECONDS       3       /* well inside the secure watchdog window (a 10 s wait was bitten) */
+++#define ALPHA_PROBE_TIMEBASE            19200000
+++
+++#ifndef __ASSEMBLER__
+++#include <stdint.h>
+++
+++/* Same sequence as ALPHA_PROBE_RESET in start.s. */
+++static inline void __attribute__((noreturn, always_inline))
+++alphaplus_probe_reset(void)
+++{
+++	uint64_t now, end;
+++
+++	__asm__ volatile ("isb\n\tmrs %0, CNTPCT_EL0" : "=r"(now));
+++	end = now + (uint64_t)ALPHA_PROBE_TIMEBASE * ALPHA_PROBE_RESET_SECONDS;
+++	do {
+++		__asm__ volatile ("isb\n\tmrs %0, CNTPCT_EL0" : "=r"(now));
+++	} while (now < end);
+++	__asm__ volatile (
+++		"mov	x0, #0x0009\n"
+++		"movk	x0, #0x8400, lsl #16\n"         /* PSCI_SYSTEM_RESET */
+++		"mov	x1, xzr\n"
+++		"mov	x2, xzr\n"
+++		"mov	x3, xzr\n"
+++		"smc	#0\n"
+++		::: "x0", "x1", "x2", "x3", "memory");
+++	for (;;) {
+++		__asm__ volatile ("wfe");
+++	}
+++}
+++
+++#define ALPHA_PROBE_POINT(point) \
+++	do { if (ALPHA_PROBE_RESET_AT == (point)) { alphaplus_probe_reset(); } } while (0)
+++#endif /* __ASSEMBLER__ */
+++
 ++
 ++/*
 ++ * Runtime checkpoints (alphaplus_stop=<n> in the boot-arg command line).
@@ -1948,13 +1565,312 @@ new file mode 100644
 ++#define ALPHA_STOP(point) alphaplus_probe_stop(point)
 ++#endif /* __ASSEMBLER__ */
 ++
-+ #endif /* _ARM64_ALPHA_PROBE_H_ */
-+--- a/osfmk/kern/startup.c	2026-11-07 23:10:12.226565006 +0800
-++++ b/osfmk/kern/startup.c	2026-11-07 23:11:17.775176767 +0800
-+@@ -255,6 +255,67 @@
-+ 	}
-+ }
+++#endif /* _ARM64_ALPHA_PROBE_H_ */
++diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/arm64/start.s xnu-m/osfmk/arm64/start.s
++--- a/osfmk/arm64/start.s	2026-11-07 23:09:19.540061779 +0800
+++++ b/osfmk/arm64/start.s	2026-11-08 09:18:11.522408413 +0800
++@@ -89,6 +89,111 @@
++ .endmacro
 + 
++ /*
+++ * alphaplus early boot probes (MMU off only).
+++ *
+++ * Same layout as UniXNU scripts/patch-xnu-entry-probe.py: the frame buffer is
+++ * split into 1/16 bands; band 0 is DarwinBoot's green band and stage N paints
+++ * band N, so the bars stack below the green one in execution order. The base,
+++ * row bytes and height come from boot_args.Video (0x28, 0x38, 0x48).
+++ * Clobbers x10-x15 and the flags.
+++ */
+++.macro ALPHA_PROBE_BAR args, band, lo, hi
+++	ldr		x10, [\args, #0x28]					// Video.v_baseAddr
+++	ldr		x11, [\args, #0x38]					// Video.v_rowBytes
+++	ldr		x12, [\args, #0x48]					// Video.v_height
+++	mul		x11, x11, x12
+++	lsr		x11, x11, #4						// bytes per band
+++	bic		x11, x11, #7
+++	mov		x13, #\band
+++	mul		x14, x11, x13
+++	add		x10, x10, x14
+++	movz	w15, #\lo
+++	movk	w15, #\hi, lsl #16					// 0xAARRGGBB
+++1:
+++	stp		w15, w15, [x10], #8
+++	subs	x11, x11, #8
+++	b.hi	1b
+++	dsb		sy
+++.endmacro
+++
+++/*
+++ * After the MMU is on the frame buffer is no longer mapped, so the signal is
+++ * time: the reset point is selected by ALPHA_PROBE_RESET_AT in alphaplus_probe.h.
+++ */
+++#include "alphaplus_probe.h"
+++
+++/*
+++ * Draw x9[31:0] as 32 columns across band \band, MSB on the left:
+++ * white = 1, grey = 0, a 4-pixel black gap before each column.
+++ * MMU off only. Clobbers x1, x10-x17 and the flags.
+++ */
+++.macro ALPHA_PROBE_BITS args, band
+++	ldr		x10, [\args, #0x28]					// Video.v_baseAddr
+++	ldr		x11, [\args, #0x38]					// Video.v_rowBytes
+++	ldr		x12, [\args, #0x48]					// Video.v_height
+++	ldr		x1, [\args, #0x40]					// Video.v_width
+++	lsr		x12, x12, #4						// rows per band
+++	mov		x14, #\band
+++	mul		x14, x14, x12
+++	madd	x10, x14, x11, x10					// first row of the band
+++	lsr		x13, x1, #5							// column width
+++1:
+++	mov		x14, xzr
+++	mov		x15, x10
+++2:
+++	udiv	x16, x14, x13
+++	cmp		x16, #32
+++	b.hs	4f
+++	msub	x17, x16, x13, x14
+++	cmp		x17, #4
+++	b.lo	4f
+++	mov		x17, #31
+++	sub		x17, x17, x16
+++	lsr		x17, x9, x17
+++	tbz		x17, #0, 3f
+++	movz	w17, #0xFFFF
+++	movk	w17, #0xFFFF, lsl #16				// white: 1
+++	b		5f
+++3:
+++	movz	w17, #0x4040
+++	movk	w17, #0xFF40, lsl #16				// grey: 0
+++	b		5f
+++4:
+++	movz	w17, #0x0000
+++	movk	w17, #0xFF00, lsl #16				// black: gap
+++5:
+++	str		w17, [x15], #4
+++	add		x14, x14, #1
+++	cmp		x14, x1
+++	b.lo	2b
+++	add		x10, x10, x11
+++	subs	x12, x12, #1
+++	b.ne	1b
+++	dsb		sy
+++.endmacro
+++
+++.macro ALPHA_PROBE_RESET seconds=ALPHA_PROBE_RESET_SECONDS
+++	mrs		x1, CNTPCT_EL0
+++	movz	x2, #((ALPHA_PROBE_TIMEBASE * \seconds) & 0xFFFF)
+++	movk	x2, #(((ALPHA_PROBE_TIMEBASE * \seconds) >> 16) & 0xFFFF), lsl #16
+++	add		x2, x1, x2
+++1:
+++	isb
+++	mrs		x1, CNTPCT_EL0
+++	cmp		x1, x2
+++	b.lo	1b
+++	movz	w0, #0x0009
+++	movk	w0, #0x8400, lsl #16				// PSCI_SYSTEM_RESET
+++	mov		x1, xzr
+++	mov		x2, xzr
+++	mov		x3, xzr
+++	smc		#0
+++2:
+++	wfe
+++	b		2b
+++.endmacro
+++
+++/*
++  * Checks the reset handler for global and CPU-specific reset-assist functions,
++  * then jumps to the reset handler with boot args and cpu data. This is copied
++  * to the first physical page during CPU bootstrap (see cpu.c).
++@@ -456,9 +561,11 @@
++ 	.globl EXT(start_first_cpu)
++ LEXT(start_first_cpu)
++ 
+++	ALPHA_PROBE_BAR x0, 1, 0x0000, 0xFFFF		// 1 red: start_first_cpu entry
++ 	// Unlock the core for debugging
++ 	msr		OSLAR_EL1, xzr
++ 	msr		DAIFSet, #(DAIFSC_ALL)				// Disable all interrupts
+++	ALPHA_PROBE_BAR x0, 2, 0x8000, 0xFFFF		// 2 orange: interrupts masked
++ 
++ 	mov		x20, x0
++ 	mov		x21, #0
++@@ -467,6 +574,7 @@
++ 	adrp	x0, EXT(LowExceptionVectorBase)@page
++ 	add		x0, x0, EXT(LowExceptionVectorBase)@pageoff
++ 	MSR_VBAR_EL1_X0
+++	ALPHA_PROBE_BAR x20, 3, 0xFF00, 0xFFFF		// 3 yellow: low exception vectors
++ 
++ 
++ 	// Get the kernel memory parameters from the boot args
++@@ -481,6 +589,7 @@
++ 	// in ml_parse_cpu_topology(), which happens later in bootstrap.
++ 	msr		TPIDRRO_EL0, xzr
++ 	msr		TPIDR_EL0, xzr
+++	ALPHA_PROBE_BAR x20, 4, 0xFFFF, 0xFFFF		// 4 white: boot args read
++ 
++ 	// Set up exception stack pointer
++ 	adrp	x0, EXT(excepstack_top)@page		// Load top of exception stack
++@@ -504,6 +613,7 @@
++ 	sub		x0, x0, x23
++ 	msr		SPSel, #0							// Set SP_EL0 to interrupt stack
++ 	mov		sp, x0
+++	ALPHA_PROBE_BAR x20, 5, 0xFFFF, 0xFF00		// 5 cyan: exception and interrupt stacks
++ 
++ 	// Load address to the C init routine into link register
++ 	adrp	lr, EXT(arm_init)@page
++@@ -613,6 +723,7 @@
++ 	dsb		ish
++ 
++ 
+++	ALPHA_PROBE_BAR x20, 6, 0x00FF, 0xFF00		// 6 blue: bootstrap page tables
++ 	b		common_start
++ 
++ /*
++@@ -681,6 +792,9 @@
++ 	mov		x1, #(MAIR_POSTED_COMBINED_REORDERED << MAIR_ATTR_SHIFT(CACHE_ATTRINDX_POSTED_COMBINED_REORDERED))
++ 	orr		x0, x0, x1
++ 	msr		MAIR_EL1, x0
+++	cbnz	x21, Lalphaplus_probe_7_done
+++	ALPHA_PROBE_BAR x20, 7, 0x00FF, 0xFFFF		// 7 magenta: TCR, TTBR0/1 and MAIR set
+++Lalphaplus_probe_7_done:
++ 	isb
++ 	tlbi	vmalle1
++ 	dsb		ish
++@@ -740,10 +854,32 @@
++ 	PAC_INIT_KEY_STATE tmp=x0, tmp2=x1
++ #endif /* HAS_APPLE_PAC */
++ 
+++	cbnz	x21, Lalphaplus_probe_8_done
+++	ALPHA_PROBE_BAR x20, 8, 0x8080, 0xFF80		// 8 grey: final vectors, MMU still off
+++Lalphaplus_probe_8_done:
+++#if ALPHA_PROBE_DUMP_PA
+++	// Still MMU off. Band 9: PA of the Mach header >> 12 (x23 after the base fix-up).
+++	// Band 10: the first word at arm_init's PA (lr - x22 + x23). If that load
+++	// cannot complete, band 10 never appears.
+++	cbnz	x21, Lalphaplus_dump_done
+++	lsr		x9, x23, #12
+++	ALPHA_PROBE_BITS x20, 9
+++	sub		x9, lr, x22
+++	add		x9, x9, x23
+++	ldr		w9, [x9]
+++	ALPHA_PROBE_BITS x20, 10
+++Lalphaplus_dump_done:
+++#endif
+++
++ 	// Enable caches, MMU, ROP and JOP
++ 	MOV64   x0, SCTLR_EL1_DEFAULT
++ 	MSR_SCTLR_EL1_X0
++ 	isb		sy
+++#if ALPHA_PROBE_RESET_AT == ALPHA_PROBE_AT_MMU_ON
+++	cbnz	x21, Lalphaplus_probe_reset_done
+++	ALPHA_PROBE_RESET							// MMU and caches on
+++Lalphaplus_probe_reset_done:
+++#endif
++ 
++ #if !VMAPPLE
++ 	MOV64   x1, SCTLR_EL1_DEFAULT
++@@ -807,6 +943,32 @@
++ 	mov	lr, x21
++ #endif
++ 
+++#if ALPHA_PROBE_RESET_AT == ALPHA_PROBE_AT_KVA_CHECK
+++	/*
+++	 * Still on the V=P map: ask the MMU to translate lr (arm_init's KVA) without
+++	 * fetching from it. PAR_EL1.F = 1 -> stay here (the watchdog bites);
+++	 * translation to the expected PA (lr - x22 + x23) -> reset after 2 s;
+++	 * translation to another PA -> reset after 5 s.
+++	 */
+++	at		s1e1r, lr
+++	isb
+++	mrs		x9, PAR_EL1
+++	tbnz	x9, #0, Lalphaplus_kva_fault
+++	ubfx	x9, x9, #12, #36					// PAR_EL1.PA[47:12]
+++	sub		x10, lr, x22
+++	add		x10, x10, x23
+++	ubfx	x10, x10, #12, #36
+++	cmp		x9, x10
+++	b.ne	Lalphaplus_kva_wrong_pa
+++	ALPHA_PROBE_RESET 2
+++Lalphaplus_kva_wrong_pa:
+++	ALPHA_PROBE_RESET 5
+++Lalphaplus_kva_fault:
+++	b		Lalphaplus_kva_fault
+++#endif
+++#if ALPHA_PROBE_RESET_AT == ALPHA_PROBE_AT_COMMON_START_RET
+++	ALPHA_PROBE_RESET 5							// about to return to arm_init (cold boot only); 5 s to read bands 9-10
+++#endif
++ 	// Return to arm_init()
++ 	ret
++ 
++diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/console/serial_console.c xnu-m/osfmk/console/serial_console.c
++--- a/osfmk/console/serial_console.c	2026-11-07 23:09:19.547964200 +0800
+++++ b/osfmk/console/serial_console.c	2026-11-08 09:18:11.526314038 +0800
++@@ -509,11 +509,15 @@
++  * @param str The string of characters to print.
++  * @param size The number of characters in `str` to print.
++  */
+++extern void alphaplus_log_write(const char *str, int size); /* osfmk/kern/startup.c */
+++
++ void
++ console_write(char *str, int size)
++ {
++ 	assert(str != NULL);
++ 
+++	alphaplus_log_write(str, size);
+++
++ 	char *write_ptr = NULL;
++ 	int chunk_size = CPU_CONS_BUF_SIZE;
++ 	int i = 0;
++diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/kern/startup.c xnu-m/osfmk/kern/startup.c
++--- a/osfmk/kern/startup.c	2026-11-07 23:09:19.592984926 +0800
+++++ b/osfmk/kern/startup.c	2026-11-08 09:18:11.526380068 +0800
++@@ -78,6 +78,7 @@
++ #include <kern/mach_param.h>
++ #include <kern/misc_protos.h>
++ #include <kern/clock.h>
+++#include <arm64/alphaplus_probe.h>
++ #include <kern/coalition.h>
++ #include <kern/cpu_number.h>
++ #include <kern/cpu_quiesce.h>
++@@ -218,9 +219,150 @@
++ 
++ TUNABLE(startup_debug_t, startup_debug, "startup_debug", 0);
++ 
+++/*
+++ * alphaplus bring-up: boot-arg alphaplus_reset=<step> resets the device (after the
+++ * probe delay) when kernel_bootstrap{,_thread}_log() is called with that step
+++ * name, e.g. alphaplus_reset=sched_init or a startup subsystem name such as
+++ * alphaplus_reset=zalloc. A bisection then only needs a different boot-arg.
+++ * Other files call it as alphaplus_probe_step() for their own named steps.
+++ */
+++void alphaplus_probe_step(const char *message);
+++void
+++alphaplus_probe_step(const char *message)
+++{
+++	static int  parsed;
+++	static char target[64];
+++
+++	if (!parsed) {
+++		parsed = 1;
+++		if (!PE_parse_boot_arg_str("alphaplus_reset", target, sizeof(target))) {
+++			target[0] = '\0';
+++		}
+++	}
+++	if (target[0] == '\0') {
+++		return;
+++	}
+++	/* Boot-args cannot carry spaces or newlines: a space matches '_', a trailing newline is ignored. */
+++	size_t i = 0;
+++	for (; target[i] != '\0'; i++) {
+++		char c = message[i] == ' ' ? '_' : message[i];
+++		if (c != target[i]) {
+++			return;
+++		}
+++	}
+++	if (message[i] == '\0' || (message[i] == '\n' && message[i + 1] == '\0')) {
+++		alphaplus_probe_reset();
+++	}
+++}
+++
 ++
 ++/*
 ++ * alphaplus_stop=<n>: scanned straight out of boot_args->CommandLine, because
@@ -2016,38 +1932,6 @@ new file mode 100644
 ++	}
 ++}
 ++
-+ static inline void
-+ kernel_bootstrap_log(const char *message)
-+ {
-diff --git a/patches/xnu/zzzzzz-alphaplus-log-ring.patch b/patches/xnu/zzzzzz-alphaplus-log-ring.patch
-new file mode 100644
---- /dev/null
-+++ b/patches/xnu/zzzzzz-alphaplus-log-ring.patch
-@@ -0,0 +1,70 @@
-+--- a/osfmk/console/serial_console.c	2026-11-07 23:09:19.547964200 +0800
-++++ b/osfmk/console/serial_console.c	2026-11-07 23:49:26.879048609 +0800
-+@@ -509,11 +509,15 @@
-+  * @param str The string of characters to print.
-+  * @param size The number of characters in `str` to print.
-+  */
-++extern void alphaplus_log_write(const char *str, int size); /* osfmk/kern/startup.c */
-++
-+ void
-+ console_write(char *str, int size)
-+ {
-+ 	assert(str != NULL);
-+ 
-++	alphaplus_log_write(str, size);
-++
-+ 	char *write_ptr = NULL;
-+ 	int chunk_size = CPU_CONS_BUF_SIZE;
-+ 	int i = 0;
-+--- a/osfmk/kern/startup.c	2026-11-07 23:11:18.417966347 +0800
-++++ b/osfmk/kern/startup.c	2026-11-07 23:49:26.878178608 +0800
-+@@ -316,6 +316,49 @@
-+ 	}
-+ }
-+ 
 ++/*
 ++ * alphaplus RAM log ring.
 ++ *
@@ -2094,53 +1978,79 @@ new file mode 100644
 + static inline void
 + kernel_bootstrap_log(const char *message)
 + {
-diff --git a/patches/xnu/zzzzzzz-alphaplus-newer-clang.patch b/patches/xnu/zzzzzzz-alphaplus-newer-clang.patch
-new file mode 100644
---- /dev/null
-+++ b/patches/xnu/zzzzzzz-alphaplus-newer-clang.patch
-@@ -0,0 +1,10 @@
-+--- a/makedefs/MakeInc.def
-++++ b/makedefs/MakeInc.def
-+@@ -306,7 +306,6 @@
-+ 	-fno-builtin \
-+ 	-fno-common \
-+ 	-ftrivial-auto-var-init=zero \
-+-	-enable-trivial-auto-var-init-zero-knowing-it-will-be-removed-from-clang \
-+ 	-fsigned-bitfields \
-+ 	-fmerge-all-constants \
-+ 	-fno-c++-static-destructors \
-diff --git a/patches/xnu/zzzzzzzz-alphaplus-iig-kernelcontent.patch b/patches/xnu/zzzzzzzz-alphaplus-iig-kernelcontent.patch
-new file mode 100644
---- /dev/null
-+++ b/patches/xnu/zzzzzzzz-alphaplus-iig-kernelcontent.patch
-@@ -0,0 +1,30 @@
-+--- a/iokit/DriverKit/IORPC.h
-++++ b/iokit/DriverKit/IORPC.h
-+@@ -224,6 +224,12 @@
-+ 	IORPCMessageMach * reply;
-+ 	uint32_t           sendSize;
-+ 	uint32_t           replySize;
-++	/*
-++	 * Newer iig (DriverKit-440 and later) marshals the kernel side header
-++	 * through this member; 8796 does not have it, so a newer iig cannot
-++	 * build the kernel. The fields above keep their offsets.
-++	 */
-++	IORPCMessage      *kernelContent;
-+ };
-+ typedef struct IORPC IORPC;
+++	alphaplus_probe_step(message);
++ 	if ((startup_debug & STARTUP_DEBUG_VERBOSE) &&
++ 	    startup_phase >= STARTUP_SUB_KPRINTF) {
++ 		kprintf("kernel_bootstrap: %s\n", message);
++@@ -231,6 +373,7 @@
++ static inline void
++ kernel_bootstrap_thread_log(const char *message)
++ {
+++	alphaplus_probe_step(message);
++ 	if ((startup_debug & STARTUP_DEBUG_VERBOSE) &&
++ 	    startup_phase >= STARTUP_SUB_KPRINTF) {
++ 		kprintf("kernel_bootstrap_thread: %s\n", message);
++@@ -787,7 +930,9 @@
++ 	 *	Start the user bootstrap.
++ 	 */
++ #ifdef  MACH_BSD
+++	alphaplus_probe_step("bsd_init_entry");
++ 	bsd_init();
+++	alphaplus_probe_step("bsd_init_done");
++ #endif
 + 
-+--- a/iokit/IOKit/IORPC.h
-++++ b/iokit/IOKit/IORPC.h
-+@@ -224,6 +224,12 @@
-+ 	IORPCMessageMach * reply;
-+ 	uint32_t           sendSize;
-+ 	uint32_t           replySize;
-++	/*
-++	 * Newer iig (DriverKit-440 and later) marshals the kernel side header
-++	 * through this member; 8796 does not have it, so a newer iig cannot
-++	 * build the kernel. The fields above keep their offsets.
-++	 */
-++	IORPCMessage      *kernelContent;
-+ };
-+ typedef struct IORPC IORPC;
 + 
++diff -ruN '--exclude=.git' /root/xnu-ref/pexpert/arm/pe_init.c xnu-m/pexpert/arm/pe_init.c
++--- a/pexpert/arm/pe_init.c	2026-11-07 23:09:19.651106070 +0800
+++++ b/pexpert/arm/pe_init.c	2026-11-08 09:18:11.522408413 +0800
++@@ -22,6 +22,8 @@
++ 
++ #include <pexpert/arm64/board_config.h>
++ 
+++extern void alphaplus_probe_step(const char *message); /* osfmk/kern/startup.c, alphaplus bring-up */
+++
++ 
++ /* extern references */
++ extern void     pe_identify_machine(boot_args *bootArgs);
++@@ -246,7 +248,9 @@
++ 	uint32_t        load_kernel_start_value = 0;
++ 	uint32_t        populate_registry_time_value = 0;
++ 
+++	alphaplus_probe_step("iokit_entry");
++ 	PE_init_printf(TRUE);
+++	alphaplus_probe_step("iokit_printf");
++ 
++ 	printf("iBoot version: %s\n", iBoot_version);
++ #if defined(TARGET_OS_OSX) && defined(__arm64__)
++@@ -271,6 +275,7 @@
++ 	}
++ 
++ 	pe_prepare_images();
+++	alphaplus_probe_step("iokit_images");
++ 
++ 	scale = PE_state.video.v_scale;
++ 	flip = 1;
++@@ -359,8 +364,11 @@
++ 		KDBG_RELEASE(IOKDBG_CODE(DBG_BOOTER, 0), start_time_value, debug_wait_start_value, load_kernel_start_value, populate_registry_time_value);
++ 	}
++ 
+++	alphaplus_probe_step("iokit_before_init");
++ 	InitIOKit(PE_state.deviceTreeHead);
+++	alphaplus_probe_step("iokit_initiokit");
++ 	ConfigureIOKit();
+++	alphaplus_probe_step("iokit_configured");
++ }
++ 
++ void
++@@ -378,8 +386,11 @@
++ 	 * against a kernel which has not yet enabled the full set of available
++ 	 * hardware protections.
++ 	 */
+++	alphaplus_probe_step("iokit_lockdown_entry");
++ 	zalloc_iokit_lockdown();
+++	alphaplus_probe_step("iokit_lockdown_zalloc");
++ 	StartIOKitMatching();
+++	alphaplus_probe_step("iokit_matching_started");
++ }
++ 
++ void
