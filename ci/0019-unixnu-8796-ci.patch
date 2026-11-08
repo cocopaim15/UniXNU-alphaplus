@@ -1271,10 +1271,10 @@ diff --git a/patches/xnu/zzzz-alphaplus-bringup.patch b/patches/xnu/zzzz-alphapl
 new file mode 100644
 --- /dev/null
 +++ b/patches/xnu/zzzz-alphaplus-bringup.patch
-@@ -0,0 +1,948 @@
+@@ -0,0 +1,955 @@
 +diff -ruN '--exclude=.git' /root/xnu-ref/bsd/kern/bsd_init.c xnu-m/bsd/kern/bsd_init.c
 +--- a/bsd/kern/bsd_init.c	2026-11-07 23:09:19.257722188 +0800
-++++ b/bsd/kern/bsd_init.c	2026-11-08 12:44:48.153925542 +0800
+++++ b/bsd/kern/bsd_init.c	2026-11-08 13:07:57.495418123 +0800
 +@@ -495,7 +495,9 @@
 + #if DEBUG_BSDINIT
 + #define bsd_init_kprintf(x, ...) kprintf("bsd_init: " x, ## __VA_ARGS__)
@@ -1288,7 +1288,7 @@ new file mode 100644
 + 	throttle_init();
 +diff -ruN '--exclude=.git' /root/xnu-ref/iokit/Kernel/IOPlatformExpert.cpp xnu-m/iokit/Kernel/IOPlatformExpert.cpp
 +--- a/iokit/Kernel/IOPlatformExpert.cpp	2026-11-07 23:09:19.453187527 +0800
-++++ b/iokit/Kernel/IOPlatformExpert.cpp	2026-11-08 12:44:48.153925542 +0800
+++++ b/iokit/Kernel/IOPlatformExpert.cpp	2026-11-08 13:07:57.495418123 +0800
 +@@ -62,6 +62,8 @@
 + #include <pexpert/pexpert.h>
 + #include <uuid/uuid.h>
@@ -1334,7 +1334,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/arm/arm_init.c xnu-m/osfmk/arm/arm_init.c
 +--- a/osfmk/arm/arm_init.c	2026-11-07 23:09:19.530183852 +0800
-++++ b/osfmk/arm/arm_init.c	2026-11-08 12:44:48.153925542 +0800
+++++ b/osfmk/arm/arm_init.c	2026-11-08 13:07:57.495418123 +0800
 +@@ -38,6 +38,7 @@
 + #include <kern/timer_queue.h>
 + #include <kern/processor.h>
@@ -1466,7 +1466,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/arm64/alphaplus_probe.h xnu-m/osfmk/arm64/alphaplus_probe.h
 +--- a/osfmk/arm64/alphaplus_probe.h	1970-01-01 08:00:00.000000000 +0800
-++++ b/osfmk/arm64/alphaplus_probe.h	2026-11-08 12:44:48.153925542 +0800
+++++ b/osfmk/arm64/alphaplus_probe.h	2026-11-08 13:07:57.495418123 +0800
 +@@ -0,0 +1,98 @@
 ++/*
 ++ * alphaplus early boot probes: where the timed reset is placed.
@@ -1568,7 +1568,7 @@ new file mode 100644
 ++#endif /* _ARM64_ALPHA_PROBE_H_ */
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/arm64/start.s xnu-m/osfmk/arm64/start.s
 +--- a/osfmk/arm64/start.s	2026-11-07 23:09:19.540061779 +0800
-++++ b/osfmk/arm64/start.s	2026-11-08 12:44:48.154080561 +0800
+++++ b/osfmk/arm64/start.s	2026-11-08 13:07:57.495579490 +0800
 +@@ -89,6 +89,111 @@
 + .endmacro
 + 
@@ -1803,7 +1803,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/console/serial_console.c xnu-m/osfmk/console/serial_console.c
 +--- a/osfmk/console/serial_console.c	2026-11-07 23:09:19.547964200 +0800
-++++ b/osfmk/console/serial_console.c	2026-11-08 12:44:48.154080561 +0800
+++++ b/osfmk/console/serial_console.c	2026-11-08 13:07:57.495579490 +0800
 +@@ -509,11 +509,15 @@
 +  * @param str The string of characters to print.
 +  * @param size The number of characters in `str` to print.
@@ -1822,8 +1822,8 @@ new file mode 100644
 + 	int i = 0;
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/kern/startup.c xnu-m/osfmk/kern/startup.c
 +--- a/osfmk/kern/startup.c	2026-11-07 23:09:19.592984926 +0800
-++++ b/osfmk/kern/startup.c	2026-11-08 12:44:48.278391356 +0800
-+@@ -71,6 +71,143 @@
+++++ b/osfmk/kern/startup.c	2026-11-08 13:07:57.620197085 +0800
++@@ -71,6 +71,150 @@
 + 
 + #include <mach/boolean.h>
 + #include <mach/machine.h>
@@ -1864,54 +1864,56 @@ new file mode 100644
 ++static void
 ++alpha_seven(uint32_t *base, vm_size_t stride, int digit, int x0, int y0, int w, int h, uint32_t colour)
 ++{
-++	int t = h / 10;
-++	int half = h / 2;
+++	int t = h / 8;
+++	int up = h / 2 - t / 2;          /* length of the upper/lower verticals */
+++	int yg = y0 + h / 2 - t / 2;     /* middle bar */
+++	int yl = y0 + h / 2 + t / 2;     /* start of the lower verticals */
 ++
 ++	switch (digit) {
 ++	case 0: case 2: case 3: case 5: case 6: case 7: case 8: case 9:
-++		alpha_rect(base, stride, x0 + t, y0, w - 2 * t, t, colour);              /* a */
+++		alpha_rect(base, stride, x0 + t, y0, w - 2 * t, t, colour);                /* a */
 ++		break;
 ++	default:
 ++		break;
 ++	}
 ++	switch (digit) {
 ++	case 0: case 1: case 3: case 4: case 7: case 8: case 9:
-++		alpha_rect(base, stride, x0 + w - t, y0 + t, t, half - t, colour);        /* b */
+++		alpha_rect(base, stride, x0 + w - t, y0 + t, t, up - t, colour);           /* b */
 ++		break;
 ++	default:
 ++		break;
 ++	}
 ++	switch (digit) {
 ++	case 0: case 1: case 3: case 4: case 5: case 6: case 7: case 8: case 9:
-++		alpha_rect(base, stride, x0 + w - t, y0 + half, t, half - t, colour);     /* c */
+++		alpha_rect(base, stride, x0 + w - t, yl, t, up - t, colour);               /* c */
 ++		break;
 ++	default:
 ++		break;
 ++	}
 ++	switch (digit) {
 ++	case 0: case 2: case 3: case 5: case 6: case 8: case 9:
-++		alpha_rect(base, stride, x0 + t, y0 + h - t, w - 2 * t, t, colour);       /* d */
+++		alpha_rect(base, stride, x0 + t, y0 + h - t, w - 2 * t, t, colour);        /* d */
 ++		break;
 ++	default:
 ++		break;
 ++	}
 ++	switch (digit) {
 ++	case 0: case 2: case 6: case 8:
-++		alpha_rect(base, stride, x0, y0 + half, t, half - t, colour);             /* e */
+++		alpha_rect(base, stride, x0, yl, t, up - t, colour);                       /* e */
 ++		break;
 ++	default:
 ++		break;
 ++	}
 ++	switch (digit) {
 ++	case 0: case 4: case 5: case 6: case 8: case 9:
-++		alpha_rect(base, stride, x0, y0 + t, t, half - t, colour);                /* f */
+++		alpha_rect(base, stride, x0, y0 + t, t, up - t, colour);                   /* f */
 ++		break;
 ++	default:
 ++		break;
 ++	}
 ++	switch (digit) {
 ++	case 2: case 3: case 4: case 5: case 6: case 8: case 9:
-++		alpha_rect(base, stride, x0 + t, y0 + half - t / 2, w - 2 * t, t, colour); /* g */
+++		alpha_rect(base, stride, x0 + t, yg, w - 2 * t, t, colour);                /* g */
 ++		break;
 ++	default:
 ++		break;
@@ -1932,8 +1934,8 @@ new file mode 100644
 ++	int          panel_h = 800;
 ++	int          panel_x;
 ++	int          y0;
-++	int          w = 360;
-++	int          h = 600;
+++	int          w = 380;
+++	int          h = 620;
 ++	int          i;
 ++
 ++	if (kernel_map == VM_MAP_NULL) {
@@ -1953,13 +1955,18 @@ new file mode 100644
 ++	}
 ++	stride = rb / 4;
 ++
-++	/* Fixed 1080x800 black panel: the whole readout lives inside it. */
+++	/* Fixed 1080x800 black panel: frame, digits, and one tick per step. */
 ++	alpha_rect(fb, stride, panel_x, 0, panel_w, panel_h, 0xFF000000);
-++	alpha_rect(fb, stride, panel_x + 20, 20, 48, 48, 0xFFFFFFFF);   /* "I can write pixels" */
-++	alpha_seven(fb, stride, (int)((cell / 10) % 10), panel_x + 80, 120, w, h, 0xFFFFFFFF);
-++	alpha_seven(fb, stride, (int)(cell % 10), panel_x + 80 + w + 80, 120, w, h, 0xFFFFFFFF);
-++	for (i = 0; i < (int)cell && i < 32; i++) {
-++		alpha_rect(fb, stride, panel_x + 80 + 2 * w + 100 + i * 16, 120, 10, h, 0xFFFF0000);
+++	alpha_rect(fb, stride, panel_x + 6, 6, panel_w - 12, 6, 0xFF404040);
+++	alpha_rect(fb, stride, panel_x + 6, panel_h - 12, panel_w - 12, 6, 0xFF404040);
+++	alpha_rect(fb, stride, panel_x + 6, 6, 6, panel_h - 12, 0xFF404040);
+++	alpha_rect(fb, stride, panel_x + panel_w - 12, 6, 6, panel_h - 12, 0xFF404040);
+++
+++	alpha_seven(fb, stride, (int)((cell / 10) % 10), panel_x + 70, 90, w, h, 0xFFFFFFFF);
+++	alpha_seven(fb, stride, (int)(cell % 10), panel_x + 70 + w + 60, 90, w, h, 0xFFFFFFFF);
+++
+++	for (i = 0; i < (int)cell && i < 40; i++) {
+++		alpha_rect(fb, stride, panel_x + 70 + i * 23, panel_h - 48, 12, 24, 0xFFFF0000);
 ++	}
 ++}
 ++
@@ -1967,7 +1974,7 @@ new file mode 100644
 + #include <mach/thread_act.h>
 + #include <mach/task_special_ports.h>
 + #include <mach/vm_param.h>
-+@@ -78,6 +215,7 @@
++@@ -78,6 +222,7 @@
 + #include <kern/mach_param.h>
 + #include <kern/misc_protos.h>
 + #include <kern/clock.h>
@@ -1975,7 +1982,7 @@ new file mode 100644
 + #include <kern/coalition.h>
 + #include <kern/cpu_number.h>
 + #include <kern/cpu_quiesce.h>
-+@@ -218,9 +356,151 @@
++@@ -218,9 +363,151 @@
 + 
 + TUNABLE(startup_debug_t, startup_debug, "startup_debug", 0);
 + 
@@ -2127,7 +2134,7 @@ new file mode 100644
 + 	if ((startup_debug & STARTUP_DEBUG_VERBOSE) &&
 + 	    startup_phase >= STARTUP_SUB_KPRINTF) {
 + 		kprintf("kernel_bootstrap: %s\n", message);
-+@@ -231,6 +511,8 @@
++@@ -231,6 +518,8 @@
 + static inline void
 + kernel_bootstrap_thread_log(const char *message)
 + {
@@ -2136,7 +2143,7 @@ new file mode 100644
 + 	if ((startup_debug & STARTUP_DEBUG_VERBOSE) &&
 + 	    startup_phase >= STARTUP_SUB_KPRINTF) {
 + 		kprintf("kernel_bootstrap_thread: %s\n", message);
-+@@ -787,7 +1069,9 @@
++@@ -787,7 +1076,9 @@
 + 	 *	Start the user bootstrap.
 + 	 */
 + #ifdef  MACH_BSD
@@ -2148,7 +2155,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/vm/vm_init.c xnu-m/osfmk/vm/vm_init.c
 +--- a/osfmk/vm/vm_init.c	2026-11-07 23:09:19.637058667 +0800
-++++ b/osfmk/vm/vm_init.c	2026-11-08 12:44:48.338954521 +0800
+++++ b/osfmk/vm/vm_init.c	2026-11-08 13:07:57.681858182 +0800
 +@@ -66,6 +66,8 @@
 + #include <mach/machine/vm_types.h>
 + #include <mach/vm_map.h>
@@ -2168,7 +2175,7 @@ new file mode 100644
 + }
 +diff -ruN '--exclude=.git' /root/xnu-ref/pexpert/arm/pe_init.c xnu-m/pexpert/arm/pe_init.c
 +--- a/pexpert/arm/pe_init.c	2026-11-07 23:09:19.651106070 +0800
-++++ b/pexpert/arm/pe_init.c	2026-11-08 12:44:48.154080561 +0800
+++++ b/pexpert/arm/pe_init.c	2026-11-08 13:07:57.495579490 +0800
 +@@ -22,6 +22,8 @@
 + 
 + #include <pexpert/arm64/board_config.h>
