@@ -1271,10 +1271,10 @@ diff --git a/patches/xnu/zzzz-alphaplus-bringup.patch b/patches/xnu/zzzz-alphapl
 new file mode 100644
 --- /dev/null
 +++ b/patches/xnu/zzzz-alphaplus-bringup.patch
-@@ -0,0 +1,932 @@
+@@ -0,0 +1,955 @@
 +diff -ruN '--exclude=.git' /root/xnu-ref/bsd/kern/bsd_init.c xnu-m/bsd/kern/bsd_init.c
 +--- a/bsd/kern/bsd_init.c	2026-11-07 23:09:19.257722188 +0800
-++++ b/bsd/kern/bsd_init.c	2026-11-08 17:29:44.514333398 +0800
+++++ b/bsd/kern/bsd_init.c	2026-11-08 18:02:11.346364556 +0800
 +@@ -495,7 +495,9 @@
 + #if DEBUG_BSDINIT
 + #define bsd_init_kprintf(x, ...) kprintf("bsd_init: " x, ## __VA_ARGS__)
@@ -1288,7 +1288,7 @@ new file mode 100644
 + 	throttle_init();
 +diff -ruN '--exclude=.git' /root/xnu-ref/iokit/Kernel/IOPlatformExpert.cpp xnu-m/iokit/Kernel/IOPlatformExpert.cpp
 +--- a/iokit/Kernel/IOPlatformExpert.cpp	2026-11-07 23:09:19.453187527 +0800
-++++ b/iokit/Kernel/IOPlatformExpert.cpp	2026-11-08 17:29:44.514333398 +0800
+++++ b/iokit/Kernel/IOPlatformExpert.cpp	2026-11-08 18:02:11.346364556 +0800
 +@@ -62,6 +62,8 @@
 + #include <pexpert/pexpert.h>
 + #include <uuid/uuid.h>
@@ -1334,7 +1334,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/arm/arm_init.c xnu-m/osfmk/arm/arm_init.c
 +--- a/osfmk/arm/arm_init.c	2026-11-07 23:09:19.530183852 +0800
-++++ b/osfmk/arm/arm_init.c	2026-11-08 17:29:44.514333398 +0800
+++++ b/osfmk/arm/arm_init.c	2026-11-08 18:02:11.346364556 +0800
 +@@ -38,6 +38,7 @@
 + #include <kern/timer_queue.h>
 + #include <kern/processor.h>
@@ -1466,7 +1466,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/arm64/alphaplus_probe.h xnu-m/osfmk/arm64/alphaplus_probe.h
 +--- a/osfmk/arm64/alphaplus_probe.h	1970-01-01 08:00:00.000000000 +0800
-++++ b/osfmk/arm64/alphaplus_probe.h	2026-11-08 17:29:44.514333398 +0800
+++++ b/osfmk/arm64/alphaplus_probe.h	2026-11-08 18:02:11.346364556 +0800
 +@@ -0,0 +1,98 @@
 ++/*
 ++ * alphaplus early boot probes: where the timed reset is placed.
@@ -1568,7 +1568,7 @@ new file mode 100644
 ++#endif /* _ARM64_ALPHA_PROBE_H_ */
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/arm64/start.s xnu-m/osfmk/arm64/start.s
 +--- a/osfmk/arm64/start.s	2026-11-07 23:09:19.540061779 +0800
-++++ b/osfmk/arm64/start.s	2026-11-08 17:29:44.514465488 +0800
+++++ b/osfmk/arm64/start.s	2026-11-08 18:02:11.346500726 +0800
 +@@ -89,6 +89,111 @@
 + .endmacro
 + 
@@ -1803,7 +1803,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/console/serial_console.c xnu-m/osfmk/console/serial_console.c
 +--- a/osfmk/console/serial_console.c	2026-11-07 23:09:19.547964200 +0800
-++++ b/osfmk/console/serial_console.c	2026-11-08 17:29:44.514465488 +0800
+++++ b/osfmk/console/serial_console.c	2026-11-08 18:02:11.346500726 +0800
 +@@ -509,11 +509,15 @@
 +  * @param str The string of characters to print.
 +  * @param size The number of characters in `str` to print.
@@ -1822,8 +1822,8 @@ new file mode 100644
 + 	int i = 0;
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/kern/startup.c xnu-m/osfmk/kern/startup.c
 +--- a/osfmk/kern/startup.c	2026-11-07 23:09:19.592984926 +0800
-++++ b/osfmk/kern/startup.c	2026-11-08 17:29:44.543532558 +0800
-+@@ -71,6 +71,127 @@
+++++ b/osfmk/kern/startup.c	2026-11-08 18:02:11.399345534 +0800
++@@ -71,6 +71,150 @@
 + 
 + #include <mach/boolean.h>
 + #include <mach/machine.h>
@@ -1871,6 +1871,20 @@ new file mode 100644
 ++ * plus red means later calls cannot write; magenta plus red plus green means
 ++ * writes keep working and the bar width / 100 is the number of calls.
 ++ */
+++/*
+++ * Bring-up readout: every call stamps the step number into the RAM log ring and
+++ * paints a matching bar, so the two channels can be read against each other.
+++ *
+++ * The ring is the durable one. DarwinBoot scans the kernel image it just read
+++ * for "ALPHALOG", finds the ring inside it and draws the text on the next boot,
+++ * so the lines survive a reset that wipes the frame buffer.
+++ *
+++ *	ring   "A<nn>\n" per call, nn = call number
+++ *	screen magenta panel and a red square on call 1, then a green bar 100 px
+++ *	       wider per call
+++ */
+++void alphaplus_log_write(const char *str, int size);
+++
 ++static unsigned int alpha_mark_next = 0;
 ++static uint32_t    *alpha_fb = NULL;
 ++static vm_size_t    alpha_stride = 0;
@@ -1892,6 +1906,7 @@ new file mode 100644
 ++void
 ++alpha_mark(void)
 ++{
+++	static const char hex[] = "0123456789abcdef";
 ++	vm_offset_t  pa = (vm_offset_t)PE_state.video.v_baseAddr;
 ++	vm_size_t    rb = (vm_size_t)PE_state.video.v_rowBytes;
 ++	vm_size_t    ht = (vm_size_t)PE_state.video.v_height;
@@ -1904,6 +1919,15 @@ new file mode 100644
 ++	int          panel_x;
 ++	int          y0;
 ++	int          bar;
+++	char         line[8];
+++
+++	/* Ring first: it survives whatever happens to the frame buffer. */
+++	line[0] = 'A';
+++	line[1] = hex[(cell >> 8) & 0xf];
+++	line[2] = hex[(cell >> 4) & 0xf];
+++	line[3] = hex[cell & 0xf];
+++	line[4] = '\n';
+++	alphaplus_log_write(line, 5);
 ++
 ++	if (kernel_map == VM_MAP_NULL) {
 ++		return;
@@ -1932,11 +1956,9 @@ new file mode 100644
 ++	stride = alpha_stride;
 ++
 ++	if (cell == 1) {
-++		/* One magenta panel, then one red square: two writes, same call. */
 ++		alpha_rect(fb, stride, panel_x, 0, panel_w, panel_h, 0xFFFF00FF);
 ++		alpha_rect(fb, stride, panel_x + 24, 24, 72, 72, 0xFFFF0000);
 ++	} else {
-++		/* Later calls: a bar that grows with the step number. */
 ++		bar = (int)cell * 100;
 ++		if (bar > panel_w - 100) {
 ++			bar = panel_w - 100;
@@ -1948,10 +1970,11 @@ new file mode 100644
 ++
 ++
 ++
+++
 + #include <mach/thread_act.h>
 + #include <mach/task_special_ports.h>
 + #include <mach/vm_param.h>
-+@@ -78,6 +199,7 @@
++@@ -78,6 +222,7 @@
 + #include <kern/mach_param.h>
 + #include <kern/misc_protos.h>
 + #include <kern/clock.h>
@@ -1959,7 +1982,7 @@ new file mode 100644
 + #include <kern/coalition.h>
 + #include <kern/cpu_number.h>
 + #include <kern/cpu_quiesce.h>
-+@@ -218,9 +340,151 @@
++@@ -218,9 +363,151 @@
 + 
 + TUNABLE(startup_debug_t, startup_debug, "startup_debug", 0);
 + 
@@ -2111,7 +2134,7 @@ new file mode 100644
 + 	if ((startup_debug & STARTUP_DEBUG_VERBOSE) &&
 + 	    startup_phase >= STARTUP_SUB_KPRINTF) {
 + 		kprintf("kernel_bootstrap: %s\n", message);
-+@@ -231,6 +495,8 @@
++@@ -231,6 +518,8 @@
 + static inline void
 + kernel_bootstrap_thread_log(const char *message)
 + {
@@ -2120,7 +2143,7 @@ new file mode 100644
 + 	if ((startup_debug & STARTUP_DEBUG_VERBOSE) &&
 + 	    startup_phase >= STARTUP_SUB_KPRINTF) {
 + 		kprintf("kernel_bootstrap_thread: %s\n", message);
-+@@ -787,7 +1053,9 @@
++@@ -787,7 +1076,9 @@
 + 	 *	Start the user bootstrap.
 + 	 */
 + #ifdef  MACH_BSD
@@ -2132,7 +2155,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/vm/vm_init.c xnu-m/osfmk/vm/vm_init.c
 +--- a/osfmk/vm/vm_init.c	2026-11-07 23:09:19.637058667 +0800
-++++ b/osfmk/vm/vm_init.c	2026-11-08 17:29:44.514465488 +0800
+++++ b/osfmk/vm/vm_init.c	2026-11-08 18:02:11.346500726 +0800
 +@@ -66,6 +66,8 @@
 + #include <mach/machine/vm_types.h>
 + #include <mach/vm_map.h>
@@ -2152,7 +2175,7 @@ new file mode 100644
 + }
 +diff -ruN '--exclude=.git' /root/xnu-ref/pexpert/arm/pe_init.c xnu-m/pexpert/arm/pe_init.c
 +--- a/pexpert/arm/pe_init.c	2026-11-07 23:09:19.651106070 +0800
-++++ b/pexpert/arm/pe_init.c	2026-11-08 17:29:44.514465488 +0800
+++++ b/pexpert/arm/pe_init.c	2026-11-08 18:02:11.346500726 +0800
 +@@ -22,6 +22,8 @@
 + 
 + #include <pexpert/arm64/board_config.h>
