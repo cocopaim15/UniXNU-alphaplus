@@ -46,11 +46,13 @@ defaults:
 
 jobs:
   kernel:
-    # macos-14 在这个账号上被拒（"configuration 'macos-14-arm64-us-default'
-    # is not supported"），macos-13 排队极慢（Intel 镜像已进入退役期）。
-    # macos-latest 能跑，但镜像上没有 Xcode 15，所以下面用 action 装 15.4：
-    # iig 对版本敏感，16 会生成 8796 不认的 IORPC.kernelContent。
-    runs-on: macos-latest
+    # macos-14 带 Xcode 15，是唯一能编 8796 的镜像（iig 对版本敏感）：
+    # Xcode 26 会生成 `IORPC.kernelContent`，8796 的 IORPC 没有这个字段。
+    # 2026-11-08 实测：这个账号上 macos-14 被拒（"configuration
+    # 'macos-14-arm64-us-default' is not supported"），macos-latest 只有
+    # Xcode 26，macos-13（Intel）排队 30 分钟以上仍未启动。
+    # 先把配置指回正确的镜像；换账号或镜像恢复后可直接用。
+    runs-on: macos-14
     timeout-minutes: 350
     env:
       # format 1 的输出目录是 out/<board>
@@ -80,9 +82,11 @@ jobs:
           python-version: "3.13"
 
       - name: Select Xcode 15
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: "15.4"
+        run: |
+          XC=$(ls -d /Applications/Xcode_15*.app 2>/dev/null | sort -V | head -1)
+          [ -n "$XC" ] || { echo "::error::no Xcode 15 on this image: $(ls -d /Applications/Xcode*.app)"; exit 1; }
+          echo "DEVELOPER_DIR=$XC/Contents/Developer" >> "$GITHUB_ENV"
+          echo "picked: $XC"
 
       - name: Install host tools
         run: |

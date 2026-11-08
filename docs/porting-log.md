@@ -945,6 +945,70 @@ python3 firmware/aloha/patches/wsl-pack-probe.py none --stop 17   # → part4k-p
 如果什么都没有，说明复位过程清了内存，得换方案（例如先把日志写进一个
 UEFI 不碰的低地址区，或改成关机不断电的复位方式）。
 
+### 11.16 不依赖重编的多点进度标记（2026-11-08 凌晨）
+
+重启内核构建的路被 CI 挡住了（`macos-14` 拿不到、`macos-latest` 只有 Xcode 26，
+而 26 的 `iig` 生成 `IORPC.kernelContent`、8796 的 `IORPC` 没有这个字段），
+于是把「一次启动回答一个问题」换成「一次启动回答一串问题」：
+
+`build-alphaplus/patch-xnu-markers.py` 直接改**现有内核**：
+
+- 在 `__DATA` 的空档（`0xfffffff007a73900`）写入 `ALPHAMRK` 块：magic + 12 个 u32 槽；
+- 把 12 个调用点改成 `b <cave>`，cave 里执行完那次调用（或调用前）往自己的槽写标记，
+  再跳回原处；用的是 `__TEXT_EXEC` 入口后面的 `nop` 填充，每洞 0x60 字节；
+- 标记顺序：`kernel_bootstrap` 的 vm_mem_bootstrap 前 / `vm_mem_bootstrap` 返回后 /
+  `machine_init` / `thread_init` / `exception_init` / `kernel_thread_create` /
+  `load_context` 前 / 线程切换后的 `_current_processor` / `idle_thread_create` /
+  `sched_startup` / `PE_init_iokit` / `bsd_init`。
+
+装载器侧 `DrawMarkers()`（`DarwinBoot.c`）在覆盖内存**之前**读这块，
+屏幕上画两行：`MRK:111100000000` 和 `HIGHEST MARK n`。
+
+这样跑一次、再开机，就知道内核这一趟走到了第几号标记——**一次启动拿到一条链**，
+而不是一个 bit。代价是 DRAM 必须活过这次复位/断电，这一点同样要靠第一次试验确认。
+
+产物：`boot-marks.img`（装载器）+ `part4k-marks.img`（内核 payload）。
+
+### 11.17 两条输出通道都被否定（2026-11-08 早上，真机）
+
+为了「一次启动拿一串进度」，试了两种不依赖重编的方案，都被真机否掉：
+
+**① 跨复位读内存（RAM 标记块）——不通。**
+
+- 内核里注入 12 个标记点，每个点往 `__DATA` 空档（`0xfffffff007a73900`，
+  magic `ALPHAMRK`）写自己的槽位；
+- 装载器在覆盖内存**之前**读回来（`DrawMarkers`）。先按「当前窗口基址 + 偏移」算地址，
+  读出 `MRK:no-data pa=A0A73900`；改成在 `0x80000000–0xBCC00000` 里扫 magic，
+  扫描本身在 UEFI 里踩到未映射地址卡死；改用 UEFI 变量记住落点，
+  仍然 `MRK:none next=A0A73900`——**两次启动落点相同、内存里也没有那块数据**。
+
+结论：不是地址算错，是 reset 之后那段内存不再是我们写的内容（固件/DXE 会用掉它）。
+这条路在没有「内核常驻装载器」的前提下走不通——这正是红米包里 Linux 引导器
+能成立、我们的 UEFI 引导器不成立的原因（见 §13.2）。
+
+**② 内核自己画屏（`ml_io_map` + framebuffer）——不通。**
+
+- 写了一个 freestanding 的 `alpha_mark(n)`：从 `PE_state +0x8/+0x10/+0x20` 取
+  framebuffer 的 base/rowBytes/height，`ml_io_map` 映射后画一块 64×64 红方块；
+- 注入到 `__TEXT_EXEC` 空档（`0xfffffff0073f1500`），12 个调用点各配一个洞穴
+  （保存 x0–x7/lr → 调 `alpha_mark` → 恢复 → 执行原调用 → 跳回）；
+- 真机结果：**一个方块都没有**。先怀疑整屏映射太大（18 MB），改成只映射要画的
+  64 行（约 370 KB）后仍然没有。
+
+结论：在这些时点（`kernel_bootstrap` 起）`ml_io_map` 要么不可用、要么写入被丢弃。
+工具链本身是好的（洞穴字节、分支、寄存器保存都核对过），所以问题在「那个时点能不能
+拿到 framebuffer 的映射」。
+
+**留下的确切结论**：引导线程在跑、没到 `bsd_init`（§11.13），而「看见它」这条路
+必须要有内核侧的配合——要么重编一个带 `loader_log` 的内核（红米/HackiOS 的做法），
+要么在 `arm_init` 已经挂上视频控制台之后再画（`PE_init_iokit` 之后的点）。
+
+**当前 CI 状态**（2026-11-08 08:4x）：`macos-14` 被账号拒绝，`macos-latest` 只有
+Xcode 26（`iig` 生成的 `IORPC.kernelContent` 与 8796 不兼容，已在日志里确认），
+`macos-13` 排队未启动。已顺手修掉 Xcode 26 的第一处不兼容
+（`makedefs/MakeInc.def` 里那个已被 clang 移除的
+`-enable-trivial-auto-var-init-zero-...`），`ci/0019` 现在共 56 个补丁，全部可应用。
+
 ## 12. 参考实现对照：dipper-xnu / HackiOS（2026-11-07）
 
 看的是 `github.com/youzjuzi/dipper-xnu`（小米 8 / SDM845，iOS 16.5 已到 SpringBoard），
