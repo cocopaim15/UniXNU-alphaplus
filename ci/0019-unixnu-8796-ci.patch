@@ -1271,10 +1271,10 @@ diff --git a/patches/xnu/zzzz-alphaplus-bringup.patch b/patches/xnu/zzzz-alphapl
 new file mode 100644
 --- /dev/null
 +++ b/patches/xnu/zzzz-alphaplus-bringup.patch
-@@ -0,0 +1,894 @@
+@@ -0,0 +1,923 @@
 +diff -ruN '--exclude=.git' /root/xnu-ref/bsd/kern/bsd_init.c xnu-m/bsd/kern/bsd_init.c
 +--- a/bsd/kern/bsd_init.c	2026-11-07 23:09:19.257722188 +0800
-++++ b/bsd/kern/bsd_init.c	2026-11-08 11:58:22.646591947 +0800
+++++ b/bsd/kern/bsd_init.c	2026-11-08 12:15:00.570353500 +0800
 +@@ -495,7 +495,9 @@
 + #if DEBUG_BSDINIT
 + #define bsd_init_kprintf(x, ...) kprintf("bsd_init: " x, ## __VA_ARGS__)
@@ -1288,7 +1288,7 @@ new file mode 100644
 + 	throttle_init();
 +diff -ruN '--exclude=.git' /root/xnu-ref/iokit/Kernel/IOPlatformExpert.cpp xnu-m/iokit/Kernel/IOPlatformExpert.cpp
 +--- a/iokit/Kernel/IOPlatformExpert.cpp	2026-11-07 23:09:19.453187527 +0800
-++++ b/iokit/Kernel/IOPlatformExpert.cpp	2026-11-08 11:58:22.646591947 +0800
+++++ b/iokit/Kernel/IOPlatformExpert.cpp	2026-11-08 12:15:00.570353500 +0800
 +@@ -62,6 +62,8 @@
 + #include <pexpert/pexpert.h>
 + #include <uuid/uuid.h>
@@ -1334,7 +1334,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/arm/arm_init.c xnu-m/osfmk/arm/arm_init.c
 +--- a/osfmk/arm/arm_init.c	2026-11-07 23:09:19.530183852 +0800
-++++ b/osfmk/arm/arm_init.c	2026-11-08 11:58:22.646591947 +0800
+++++ b/osfmk/arm/arm_init.c	2026-11-08 12:15:00.570353500 +0800
 +@@ -38,6 +38,7 @@
 + #include <kern/timer_queue.h>
 + #include <kern/processor.h>
@@ -1466,7 +1466,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/arm64/alphaplus_probe.h xnu-m/osfmk/arm64/alphaplus_probe.h
 +--- a/osfmk/arm64/alphaplus_probe.h	1970-01-01 08:00:00.000000000 +0800
-++++ b/osfmk/arm64/alphaplus_probe.h	2026-11-08 11:58:22.646591947 +0800
+++++ b/osfmk/arm64/alphaplus_probe.h	2026-11-08 12:15:00.570353500 +0800
 +@@ -0,0 +1,98 @@
 ++/*
 ++ * alphaplus early boot probes: where the timed reset is placed.
@@ -1568,7 +1568,7 @@ new file mode 100644
 ++#endif /* _ARM64_ALPHA_PROBE_H_ */
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/arm64/start.s xnu-m/osfmk/arm64/start.s
 +--- a/osfmk/arm64/start.s	2026-11-07 23:09:19.540061779 +0800
-++++ b/osfmk/arm64/start.s	2026-11-08 11:58:22.646777136 +0800
+++++ b/osfmk/arm64/start.s	2026-11-08 12:15:00.570502318 +0800
 +@@ -89,6 +89,111 @@
 + .endmacro
 + 
@@ -1803,7 +1803,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/console/serial_console.c xnu-m/osfmk/console/serial_console.c
 +--- a/osfmk/console/serial_console.c	2026-11-07 23:09:19.547964200 +0800
-++++ b/osfmk/console/serial_console.c	2026-11-08 11:58:22.646777136 +0800
+++++ b/osfmk/console/serial_console.c	2026-11-08 12:15:00.570502318 +0800
 +@@ -509,11 +509,15 @@
 +  * @param str The string of characters to print.
 +  * @param size The number of characters in `str` to print.
@@ -1822,8 +1822,8 @@ new file mode 100644
 + 	int i = 0;
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/kern/startup.c xnu-m/osfmk/kern/startup.c
 +--- a/osfmk/kern/startup.c	2026-11-07 23:09:19.592984926 +0800
-++++ b/osfmk/kern/startup.c	2026-11-08 11:58:22.769633177 +0800
-+@@ -71,6 +71,109 @@
+++++ b/osfmk/kern/startup.c	2026-11-08 12:15:00.694707021 +0800
++@@ -71,6 +71,138 @@
 + 
 + #include <mach/boolean.h>
 + #include <mach/machine.h>
@@ -1841,44 +1841,80 @@ new file mode 100644
 ++ * a step that cannot paint must not change how the kernel boots.
 ++ */
 ++/*
-++ * Paint the step number as large digits on the bottom of the frame buffer, so
-++ * one look at the screen says exactly which bring-up step the kernel reached.
-++ * 5x7 bitmap font, scaled up; no font library, no allocation beyond the mapping.
+++ * Draw the bring-up step number on the frame buffer using nothing but filled
+++ * rectangles: a 7-segment style digit per decimal digit, plus one tick per step.
+++ * A fixed white block at the top-left says "this code ran and can write pixels".
 ++ */
-++static const unsigned char alpha_font[10][7] = {
-++	{ 0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E },   /* 0 */
-++	{ 0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E },   /* 1 */
-++	{ 0x0E, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1F },   /* 2 */
-++	{ 0x1F, 0x02, 0x04, 0x02, 0x01, 0x11, 0x0E },   /* 3 */
-++	{ 0x02, 0x06, 0x0A, 0x12, 0x1F, 0x02, 0x02 },   /* 4 */
-++	{ 0x1F, 0x10, 0x1E, 0x01, 0x01, 0x11, 0x0E },   /* 5 */
-++	{ 0x06, 0x08, 0x10, 0x1E, 0x11, 0x11, 0x0E },   /* 6 */
-++	{ 0x1F, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08 },   /* 7 */
-++	{ 0x0E, 0x11, 0x11, 0x0E, 0x11, 0x11, 0x0E },   /* 8 */
-++	{ 0x0E, 0x11, 0x11, 0x0F, 0x01, 0x02, 0x0C },   /* 9 */
-++};
-++
 ++static unsigned int alpha_mark_next = 0;
 ++
 ++static void
-++alpha_digit(uint32_t *base, vm_size_t stride, int digit, int x0, int scale)
+++alpha_rect(uint32_t *base, vm_size_t stride, int x, int y, int w, int h, uint32_t colour)
 ++{
 ++	int row;
 ++	int col;
-++	int bit;
 ++
-++	for (row = 0; row < 7; row++) {
-++		for (col = 0; col < 5; col++) {
-++			if ((alpha_font[digit][row] & (0x10 >> col)) == 0) {
-++				continue;
-++			}
-++			for (int dy = 0; dy < scale; dy++) {
-++				uint32_t *line = base + (vm_size_t)(row * scale + dy) * stride + x0 + col * scale;
-++				for (bit = 0; bit < scale; bit++) {
-++					line[bit] = 0xFFFFFFFF;
-++				}
-++			}
+++	for (row = 0; row < h; row++) {
+++		uint32_t *line = base + (vm_size_t)(y + row) * stride + x;
+++		for (col = 0; col < w; col++) {
+++			line[col] = colour;
 ++		}
+++	}
+++}
+++
+++static void
+++alpha_seven(uint32_t *base, vm_size_t stride, int digit, int x0, int y0, int w, int h, uint32_t colour)
+++{
+++	int t = h / 10;
+++	int half = h / 2;
+++
+++	switch (digit) {
+++	case 0: case 2: case 3: case 5: case 6: case 7: case 8: case 9:
+++		alpha_rect(base, stride, x0 + t, y0, w - 2 * t, t, colour);              /* a */
+++		break;
+++	default:
+++		break;
+++	}
+++	switch (digit) {
+++	case 0: case 1: case 3: case 4: case 7: case 8: case 9:
+++		alpha_rect(base, stride, x0 + w - t, y0 + t, t, half - t, colour);        /* b */
+++		break;
+++	default:
+++		break;
+++	}
+++	switch (digit) {
+++	case 0: case 1: case 3: case 4: case 5: case 6: case 7: case 8: case 9:
+++		alpha_rect(base, stride, x0 + w - t, y0 + half, t, half - t, colour);     /* c */
+++		break;
+++	default:
+++		break;
+++	}
+++	switch (digit) {
+++	case 0: case 2: case 3: case 5: case 6: case 8: case 9:
+++		alpha_rect(base, stride, x0 + t, y0 + h - t, w - 2 * t, t, colour);       /* d */
+++		break;
+++	default:
+++		break;
+++	}
+++	switch (digit) {
+++	case 0: case 2: case 6: case 8:
+++		alpha_rect(base, stride, x0, y0 + half, t, half - t, colour);             /* e */
+++		break;
+++	default:
+++		break;
+++	}
+++	switch (digit) {
+++	case 0: case 4: case 5: case 6: case 8: case 9:
+++		alpha_rect(base, stride, x0, y0 + t, t, half - t, colour);                /* f */
+++		break;
+++	default:
+++		break;
+++	}
+++	switch (digit) {
+++	case 2: case 3: case 4: case 5: case 6: case 8: case 9:
+++		alpha_rect(base, stride, x0 + t, y0 + half - t / 2, w - 2 * t, t, colour); /* g */
+++		break;
+++	default:
+++		break;
 ++	}
 ++}
 ++
@@ -1890,11 +1926,12 @@ new file mode 100644
 ++	vm_size_t    ht = (vm_size_t)PE_state.video.v_height;
 ++	vm_size_t    wd = (vm_size_t)PE_state.video.v_width;
 ++	uint32_t    *fb;
+++	vm_size_t    stride;
 ++	unsigned int cell = alpha_mark_next++ + 1;
-++	vm_size_t    y;
-++	int          scale = 60;
-++	int          row;
-++	int          col;
+++	int          w = 240;
+++	int          h = 400;
+++	int          y0;
+++	int          i;
 ++
 ++	if (kernel_map == VM_MAP_NULL) {
 ++		return;
@@ -1902,30 +1939,22 @@ new file mode 100644
 ++	if (pa == 0 || rb == 0 || ht == 0 || wd == 0 || cell > 99) {
 ++		return;
 ++	}
-++	y = (ht > 520) ? (ht - 500) : 0;
-++	fb = (uint32_t *)ml_io_map(pa + y * rb, rb * (vm_size_t)(7 * scale + 60));
+++	y0 = (ht > (vm_size_t)(h + 80)) ? (int)(ht - (vm_size_t)h - 60) : 0;
+++	fb = (uint32_t *)ml_io_map(pa + (vm_size_t)y0 * rb, rb * (vm_size_t)(h + 40));
 ++	if (fb == 0) {
 ++		return;
 ++	}
-++	/* Clear the digits, keep a tick strip to the right that is never erased. */
-++	for (row = 0; row < 7 * scale + 40; row++) {
-++		uint32_t *line = fb + (vm_size_t)row * (rb / 4);
-++		for (col = 0; col < 15 * scale; col++) {
-++			line[col] = 0xFF000000;
-++		}
-++	}
-++	alpha_digit(fb, rb / 4, (int)(cell / 10), 30, scale);
-++	alpha_digit(fb, rb / 4, (int)(cell % 10), 30 + 6 * scale, scale);
+++	stride = rb / 4;
 ++
-++	/* Tick per step: x = 30 + 12*scale + cell*16, 10 wide, full height. */
-++	{
-++		int tick_x = 30 + 12 * scale + (int)(cell - 1) * 16;
-++		for (row = 0; row < 7 * scale; row++) {
-++			uint32_t *line = fb + (vm_size_t)row * (rb / 4) + tick_x;
-++			for (col = 0; col < 10; col++) {
-++				line[col] = 0xFFFF0000;
-++			}
-++		}
+++	/* "I am running and can write pixels": a fixed white block, top left. */
+++	alpha_rect(fb, stride, 0, 0, 48, 48, 0xFFFFFFFF);
+++
+++	/* Clear the readout, then draw the two digits and the tick strip. */
+++	alpha_rect(fb, stride, 120, 0, 2 * (w + 40) + 40, h, 0xFF000000);
+++	alpha_seven(fb, stride, (int)((cell / 10) % 10), 140, 0, w, h, 0xFFFFFFFF);
+++	alpha_seven(fb, stride, (int)(cell % 10), 140 + w + 40, 0, w, h, 0xFFFFFFFF);
+++	for (i = 0; i < (int)cell && i < 32; i++) {
+++		alpha_rect(fb, stride, 140 + 2 * (w + 40) + 40 + i * 14, 20, 8, h - 40, 0xFFFF0000);
 ++	}
 ++}
 ++
@@ -1933,7 +1962,7 @@ new file mode 100644
 + #include <mach/thread_act.h>
 + #include <mach/task_special_ports.h>
 + #include <mach/vm_param.h>
-+@@ -78,6 +181,7 @@
++@@ -78,6 +210,7 @@
 + #include <kern/mach_param.h>
 + #include <kern/misc_protos.h>
 + #include <kern/clock.h>
@@ -1941,7 +1970,7 @@ new file mode 100644
 + #include <kern/coalition.h>
 + #include <kern/cpu_number.h>
 + #include <kern/cpu_quiesce.h>
-+@@ -218,9 +322,151 @@
++@@ -218,9 +351,151 @@
 + 
 + TUNABLE(startup_debug_t, startup_debug, "startup_debug", 0);
 + 
@@ -2093,7 +2122,7 @@ new file mode 100644
 + 	if ((startup_debug & STARTUP_DEBUG_VERBOSE) &&
 + 	    startup_phase >= STARTUP_SUB_KPRINTF) {
 + 		kprintf("kernel_bootstrap: %s\n", message);
-+@@ -231,6 +477,8 @@
++@@ -231,6 +506,8 @@
 + static inline void
 + kernel_bootstrap_thread_log(const char *message)
 + {
@@ -2102,7 +2131,7 @@ new file mode 100644
 + 	if ((startup_debug & STARTUP_DEBUG_VERBOSE) &&
 + 	    startup_phase >= STARTUP_SUB_KPRINTF) {
 + 		kprintf("kernel_bootstrap_thread: %s\n", message);
-+@@ -787,7 +1035,9 @@
++@@ -787,7 +1064,9 @@
 + 	 *	Start the user bootstrap.
 + 	 */
 + #ifdef  MACH_BSD
@@ -2114,7 +2143,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/pexpert/arm/pe_init.c xnu-m/pexpert/arm/pe_init.c
 +--- a/pexpert/arm/pe_init.c	2026-11-07 23:09:19.651106070 +0800
-++++ b/pexpert/arm/pe_init.c	2026-11-08 11:58:22.646777136 +0800
+++++ b/pexpert/arm/pe_init.c	2026-11-08 12:15:00.570502318 +0800
 +@@ -22,6 +22,8 @@
 + 
 + #include <pexpert/arm64/board_config.h>
