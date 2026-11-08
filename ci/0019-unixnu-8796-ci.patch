@@ -2109,3 +2109,23 @@ new file mode 100644
 + 	-fsigned-bitfields \
 + 	-fmerge-all-constants \
 + 	-fno-c++-static-destructors \
+diff --git a/patches/xnu/zzzzzzzz-alphaplus-iig-kernelcontent.patch b/patches/xnu/zzzzzzzz-alphaplus-iig-kernelcontent.patch
+new file mode 100644
+--- /dev/null
++++ b/patches/xnu/zzzzzzzz-alphaplus-iig-kernelcontent.patch
+@@ -0,0 +1,15 @@
++--- a/iokit/DriverKit/IORPC.h
+++++ b/iokit/DriverKit/IORPC.h
++@@ -224,6 +224,12 @@
++ 	IORPCMessageMach * reply;
++ 	uint32_t           sendSize;
++ 	uint32_t           replySize;
+++	/*
+++	 * Newer iig (DriverKit-440 and later) marshals the kernel side header
+++	 * through this member; 8796 does not have it, so a newer iig cannot
+++	 * build the kernel. Fields above keep their offsets.
+++	 */
+++	IORPCMessage      *kernelContent;
++ };
++ typedef struct IORPC IORPC;
++ 
