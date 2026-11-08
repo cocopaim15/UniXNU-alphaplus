@@ -1271,10 +1271,10 @@ diff --git a/patches/xnu/zzzz-alphaplus-bringup.patch b/patches/xnu/zzzz-alphapl
 new file mode 100644
 --- /dev/null
 +++ b/patches/xnu/zzzz-alphaplus-bringup.patch
-@@ -0,0 +1,854 @@
+@@ -0,0 +1,885 @@
 +diff -ruN '--exclude=.git' /root/xnu-ref/bsd/kern/bsd_init.c xnu-m/bsd/kern/bsd_init.c
 +--- a/bsd/kern/bsd_init.c	2026-11-07 23:09:19.257722188 +0800
-++++ b/bsd/kern/bsd_init.c	2026-11-08 11:18:49.830899676 +0800
+++++ b/bsd/kern/bsd_init.c	2026-11-08 11:20:37.359521235 +0800
 +@@ -495,7 +495,9 @@
 + #if DEBUG_BSDINIT
 + #define bsd_init_kprintf(x, ...) kprintf("bsd_init: " x, ## __VA_ARGS__)
@@ -1288,7 +1288,7 @@ new file mode 100644
 + 	throttle_init();
 +diff -ruN '--exclude=.git' /root/xnu-ref/iokit/Kernel/IOPlatformExpert.cpp xnu-m/iokit/Kernel/IOPlatformExpert.cpp
 +--- a/iokit/Kernel/IOPlatformExpert.cpp	2026-11-07 23:09:19.453187527 +0800
-++++ b/iokit/Kernel/IOPlatformExpert.cpp	2026-11-08 11:18:49.830899676 +0800
+++++ b/iokit/Kernel/IOPlatformExpert.cpp	2026-11-08 11:20:37.359521235 +0800
 +@@ -62,6 +62,8 @@
 + #include <pexpert/pexpert.h>
 + #include <uuid/uuid.h>
@@ -1334,7 +1334,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/arm/arm_init.c xnu-m/osfmk/arm/arm_init.c
 +--- a/osfmk/arm/arm_init.c	2026-11-07 23:09:19.530183852 +0800
-++++ b/osfmk/arm/arm_init.c	2026-11-08 11:18:49.830899676 +0800
+++++ b/osfmk/arm/arm_init.c	2026-11-08 11:20:37.359521235 +0800
 +@@ -38,6 +38,7 @@
 + #include <kern/timer_queue.h>
 + #include <kern/processor.h>
@@ -1466,7 +1466,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/arm64/alphaplus_probe.h xnu-m/osfmk/arm64/alphaplus_probe.h
 +--- a/osfmk/arm64/alphaplus_probe.h	1970-01-01 08:00:00.000000000 +0800
-++++ b/osfmk/arm64/alphaplus_probe.h	2026-11-08 11:18:49.830899676 +0800
+++++ b/osfmk/arm64/alphaplus_probe.h	2026-11-08 11:20:37.359521235 +0800
 +@@ -0,0 +1,98 @@
 ++/*
 ++ * alphaplus early boot probes: where the timed reset is placed.
@@ -1568,7 +1568,7 @@ new file mode 100644
 ++#endif /* _ARM64_ALPHA_PROBE_H_ */
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/arm64/start.s xnu-m/osfmk/arm64/start.s
 +--- a/osfmk/arm64/start.s	2026-11-07 23:09:19.540061779 +0800
-++++ b/osfmk/arm64/start.s	2026-11-08 11:18:49.831089190 +0800
+++++ b/osfmk/arm64/start.s	2026-11-08 11:20:37.359695253 +0800
 +@@ -89,6 +89,111 @@
 + .endmacro
 + 
@@ -1803,7 +1803,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/console/serial_console.c xnu-m/osfmk/console/serial_console.c
 +--- a/osfmk/console/serial_console.c	2026-11-07 23:09:19.547964200 +0800
-++++ b/osfmk/console/serial_console.c	2026-11-08 11:18:49.831089190 +0800
+++++ b/osfmk/console/serial_console.c	2026-11-08 11:20:37.359695253 +0800
 +@@ -509,11 +509,15 @@
 +  * @param str The string of characters to print.
 +  * @param size The number of characters in `str` to print.
@@ -1822,8 +1822,8 @@ new file mode 100644
 + 	int i = 0;
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/kern/startup.c xnu-m/osfmk/kern/startup.c
 +--- a/osfmk/kern/startup.c	2026-11-07 23:09:19.592984926 +0800
-++++ b/osfmk/kern/startup.c	2026-11-08 11:18:49.951571546 +0800
-+@@ -71,6 +71,69 @@
+++++ b/osfmk/kern/startup.c	2026-11-08 11:20:37.481099967 +0800
++@@ -71,6 +71,100 @@
 + 
 + #include <mach/boolean.h>
 + #include <mach/machine.h>
@@ -1841,11 +1841,46 @@ new file mode 100644
 ++ * a step that cannot paint must not change how the kernel boots.
 ++ */
 ++/*
-++ * A growing bar instead of one square per step: the bar length carries the step
-++ * number, so one look at the screen says exactly how far the kernel got even if
-++ * earlier paints were lost.
+++ * Paint the step number as large digits on the bottom of the frame buffer, so
+++ * one look at the screen says exactly which bring-up step the kernel reached.
+++ * 5x7 bitmap font, scaled up; no font library, no allocation beyond the mapping.
 ++ */
+++static const unsigned char alpha_font[10][7] = {
+++	{ 0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E },   /* 0 */
+++	{ 0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E },   /* 1 */
+++	{ 0x0E, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1F },   /* 2 */
+++	{ 0x1F, 0x02, 0x04, 0x02, 0x01, 0x11, 0x0E },   /* 3 */
+++	{ 0x02, 0x06, 0x0A, 0x12, 0x1F, 0x02, 0x02 },   /* 4 */
+++	{ 0x1F, 0x10, 0x1E, 0x01, 0x01, 0x11, 0x0E },   /* 5 */
+++	{ 0x06, 0x08, 0x10, 0x1E, 0x11, 0x11, 0x0E },   /* 6 */
+++	{ 0x1F, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08 },   /* 7 */
+++	{ 0x0E, 0x11, 0x11, 0x0E, 0x11, 0x11, 0x0E },   /* 8 */
+++	{ 0x0E, 0x11, 0x11, 0x0F, 0x01, 0x02, 0x0C },   /* 9 */
+++};
+++
 ++static unsigned int alpha_mark_next = 0;
+++
+++static void
+++alpha_digit(uint32_t *base, vm_size_t stride, int digit, int x0, int scale)
+++{
+++	int row;
+++	int col;
+++	int bit;
+++
+++	for (row = 0; row < 7; row++) {
+++		for (col = 0; col < 5; col++) {
+++			if ((alpha_font[digit][row] & (0x10 >> col)) == 0) {
+++				continue;
+++			}
+++			for (int dy = 0; dy < scale; dy++) {
+++				uint32_t *line = base + (vm_size_t)(row * scale + dy) * stride + x0 + col * scale;
+++				for (bit = 0; bit < scale; bit++) {
+++					line[bit] = 0xFFFF0000;
+++				}
+++			}
+++		}
+++	}
+++}
 ++
 ++static void
 ++alpha_mark(void)
@@ -1855,45 +1890,41 @@ new file mode 100644
 ++	vm_size_t    ht = (vm_size_t)PE_state.video.v_height;
 ++	vm_size_t    wd = (vm_size_t)PE_state.video.v_width;
 ++	uint32_t    *fb;
-++	unsigned int cell = alpha_mark_next++;
-++	vm_size_t    bar;
+++	unsigned int cell = alpha_mark_next++ + 1;
 ++	vm_size_t    y;
+++	int          scale = 10;
 ++	int          row;
 ++	int          col;
+++	int          digits = (cell >= 10) ? 2 : 1;
 ++
-++	/*
-++	 * io_map() allocates the mapping from kernel_map, which only exists after
-++	 * vm_mem_bootstrap() ran kmem_init(). Mapping before that would take the
-++	 * kernel down before it could say why.
-++	 */
 ++	if (kernel_map == VM_MAP_NULL) {
 ++		return;
 ++	}
-++	if (pa == 0 || rb == 0 || ht == 0 || wd == 0 || cell >= 32) {
+++	if (pa == 0 || rb == 0 || ht == 0 || wd == 0 || cell > 99) {
 ++		return;
 ++	}
-++	bar = (vm_size_t)(cell + 1) * 40;
-++	if (bar > wd) {
-++		bar = wd;
-++	}
-++	y = (ht > 160) ? (ht - 120) : 0;
-++	fb = (uint32_t *)ml_io_map(pa + y * rb, rb * 48);
+++	y = (ht > 160) ? (ht - 140) : 0;
+++	fb = (uint32_t *)ml_io_map(pa + y * rb, rb * (vm_size_t)(7 * scale + 20));
 ++	if (fb == 0) {
 ++		return;
 ++	}
-++	for (row = 0; row < 48; row++) {
+++	for (row = 0; row < 7 * scale + 10; row++) {
 ++		uint32_t *line = fb + (vm_size_t)row * (rb / 4);
-++		for (col = 0; (vm_size_t)col < bar; col++) {
-++			line[col] = 0xFFFF0000;
+++		for (col = 0; col < 200; col++) {
+++			line[col] = 0xFF000000;
 ++		}
 ++	}
+++	if (digits == 2) {
+++		alpha_digit(fb, rb / 4, (int)(cell / 10), 16, scale);
+++	}
+++	alpha_digit(fb, rb / 4, (int)(cell % 10), 16 + (digits == 2 ? 6 * scale : 0), scale);
 ++}
 ++
 ++
 + #include <mach/thread_act.h>
 + #include <mach/task_special_ports.h>
 + #include <mach/vm_param.h>
-+@@ -78,6 +141,7 @@
++@@ -78,6 +172,7 @@
 + #include <kern/mach_param.h>
 + #include <kern/misc_protos.h>
 + #include <kern/clock.h>
@@ -1901,7 +1932,7 @@ new file mode 100644
 + #include <kern/coalition.h>
 + #include <kern/cpu_number.h>
 + #include <kern/cpu_quiesce.h>
-+@@ -218,9 +282,151 @@
++@@ -218,9 +313,151 @@
 + 
 + TUNABLE(startup_debug_t, startup_debug, "startup_debug", 0);
 + 
@@ -2053,7 +2084,7 @@ new file mode 100644
 + 	if ((startup_debug & STARTUP_DEBUG_VERBOSE) &&
 + 	    startup_phase >= STARTUP_SUB_KPRINTF) {
 + 		kprintf("kernel_bootstrap: %s\n", message);
-+@@ -231,6 +437,8 @@
++@@ -231,6 +468,8 @@
 + static inline void
 + kernel_bootstrap_thread_log(const char *message)
 + {
@@ -2062,7 +2093,7 @@ new file mode 100644
 + 	if ((startup_debug & STARTUP_DEBUG_VERBOSE) &&
 + 	    startup_phase >= STARTUP_SUB_KPRINTF) {
 + 		kprintf("kernel_bootstrap_thread: %s\n", message);
-+@@ -787,7 +995,9 @@
++@@ -787,7 +1026,9 @@
 + 	 *	Start the user bootstrap.
 + 	 */
 + #ifdef  MACH_BSD
@@ -2074,7 +2105,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/pexpert/arm/pe_init.c xnu-m/pexpert/arm/pe_init.c
 +--- a/pexpert/arm/pe_init.c	2026-11-07 23:09:19.651106070 +0800
-++++ b/pexpert/arm/pe_init.c	2026-11-08 11:18:49.831089190 +0800
+++++ b/pexpert/arm/pe_init.c	2026-11-08 11:20:37.359695253 +0800
 +@@ -22,6 +22,8 @@
 + 
 + #include <pexpert/arm64/board_config.h>
