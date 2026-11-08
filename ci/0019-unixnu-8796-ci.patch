@@ -1271,10 +1271,10 @@ diff --git a/patches/xnu/zzzz-alphaplus-bringup.patch b/patches/xnu/zzzz-alphapl
 new file mode 100644
 --- /dev/null
 +++ b/patches/xnu/zzzz-alphaplus-bringup.patch
-@@ -0,0 +1,923 @@
+@@ -0,0 +1,943 @@
 +diff -ruN '--exclude=.git' /root/xnu-ref/bsd/kern/bsd_init.c xnu-m/bsd/kern/bsd_init.c
 +--- a/bsd/kern/bsd_init.c	2026-11-07 23:09:19.257722188 +0800
-++++ b/bsd/kern/bsd_init.c	2026-11-08 12:15:00.570353500 +0800
+++++ b/bsd/kern/bsd_init.c	2026-11-08 12:32:20.729972712 +0800
 +@@ -495,7 +495,9 @@
 + #if DEBUG_BSDINIT
 + #define bsd_init_kprintf(x, ...) kprintf("bsd_init: " x, ## __VA_ARGS__)
@@ -1288,7 +1288,7 @@ new file mode 100644
 + 	throttle_init();
 +diff -ruN '--exclude=.git' /root/xnu-ref/iokit/Kernel/IOPlatformExpert.cpp xnu-m/iokit/Kernel/IOPlatformExpert.cpp
 +--- a/iokit/Kernel/IOPlatformExpert.cpp	2026-11-07 23:09:19.453187527 +0800
-++++ b/iokit/Kernel/IOPlatformExpert.cpp	2026-11-08 12:15:00.570353500 +0800
+++++ b/iokit/Kernel/IOPlatformExpert.cpp	2026-11-08 12:32:20.729972712 +0800
 +@@ -62,6 +62,8 @@
 + #include <pexpert/pexpert.h>
 + #include <uuid/uuid.h>
@@ -1334,7 +1334,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/arm/arm_init.c xnu-m/osfmk/arm/arm_init.c
 +--- a/osfmk/arm/arm_init.c	2026-11-07 23:09:19.530183852 +0800
-++++ b/osfmk/arm/arm_init.c	2026-11-08 12:15:00.570353500 +0800
+++++ b/osfmk/arm/arm_init.c	2026-11-08 12:32:20.729972712 +0800
 +@@ -38,6 +38,7 @@
 + #include <kern/timer_queue.h>
 + #include <kern/processor.h>
@@ -1466,7 +1466,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/arm64/alphaplus_probe.h xnu-m/osfmk/arm64/alphaplus_probe.h
 +--- a/osfmk/arm64/alphaplus_probe.h	1970-01-01 08:00:00.000000000 +0800
-++++ b/osfmk/arm64/alphaplus_probe.h	2026-11-08 12:15:00.570353500 +0800
+++++ b/osfmk/arm64/alphaplus_probe.h	2026-11-08 12:32:20.729972712 +0800
 +@@ -0,0 +1,98 @@
 ++/*
 ++ * alphaplus early boot probes: where the timed reset is placed.
@@ -1568,7 +1568,7 @@ new file mode 100644
 ++#endif /* _ARM64_ALPHA_PROBE_H_ */
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/arm64/start.s xnu-m/osfmk/arm64/start.s
 +--- a/osfmk/arm64/start.s	2026-11-07 23:09:19.540061779 +0800
-++++ b/osfmk/arm64/start.s	2026-11-08 12:15:00.570502318 +0800
+++++ b/osfmk/arm64/start.s	2026-11-08 12:32:20.730139181 +0800
 +@@ -89,6 +89,111 @@
 + .endmacro
 + 
@@ -1803,7 +1803,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/console/serial_console.c xnu-m/osfmk/console/serial_console.c
 +--- a/osfmk/console/serial_console.c	2026-11-07 23:09:19.547964200 +0800
-++++ b/osfmk/console/serial_console.c	2026-11-08 12:15:00.570502318 +0800
+++++ b/osfmk/console/serial_console.c	2026-11-08 12:32:20.730139181 +0800
 +@@ -509,11 +509,15 @@
 +  * @param str The string of characters to print.
 +  * @param size The number of characters in `str` to print.
@@ -1822,7 +1822,7 @@ new file mode 100644
 + 	int i = 0;
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/kern/startup.c xnu-m/osfmk/kern/startup.c
 +--- a/osfmk/kern/startup.c	2026-11-07 23:09:19.592984926 +0800
-++++ b/osfmk/kern/startup.c	2026-11-08 12:15:00.694707021 +0800
+++++ b/osfmk/kern/startup.c	2026-11-08 12:32:20.851663018 +0800
 +@@ -71,6 +71,138 @@
 + 
 + #include <mach/boolean.h>
@@ -1918,7 +1918,7 @@ new file mode 100644
 ++	}
 ++}
 ++
-++static void
+++void
 ++alpha_mark(void)
 ++{
 ++	vm_offset_t  pa = (vm_offset_t)PE_state.video.v_baseAddr;
@@ -2141,9 +2141,29 @@ new file mode 100644
 + #endif
 + 
 + 
++diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/vm/vm_init.c xnu-m/osfmk/vm/vm_init.c
++--- a/osfmk/vm/vm_init.c	2026-11-07 23:09:19.637058667 +0800
+++++ b/osfmk/vm/vm_init.c	2026-11-08 12:32:20.912586009 +0800
++@@ -66,6 +66,8 @@
++ #include <mach/machine/vm_types.h>
++ #include <mach/vm_map.h>
++ #include <kern/startup.h>
+++
+++extern void alpha_mark(void);
++ #include <kern/zalloc_internal.h>
++ #include <kern/kext_alloc.h>
++ #include <sys/kdebug.h>
++@@ -90,6 +92,7 @@
++ static inline void
++ vm_mem_bootstrap_log(const char *message)
++ {
+++	alpha_mark();
++ //	kprintf("vm_mem_bootstrap: %s\n", message);
++ 	kernel_debug_string_early(message);
++ }
 +diff -ruN '--exclude=.git' /root/xnu-ref/pexpert/arm/pe_init.c xnu-m/pexpert/arm/pe_init.c
 +--- a/pexpert/arm/pe_init.c	2026-11-07 23:09:19.651106070 +0800
-++++ b/pexpert/arm/pe_init.c	2026-11-08 12:15:00.570502318 +0800
+++++ b/pexpert/arm/pe_init.c	2026-11-08 12:32:20.730139181 +0800
 +@@ -22,6 +22,8 @@
 + 
 + #include <pexpert/arm64/board_config.h>
