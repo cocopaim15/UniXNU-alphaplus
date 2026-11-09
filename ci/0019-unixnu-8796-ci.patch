@@ -1271,10 +1271,10 @@ diff --git a/patches/xnu/zzzz-alphaplus-bringup.patch b/patches/xnu/zzzz-alphapl
 new file mode 100644
 --- /dev/null
 +++ b/patches/xnu/zzzz-alphaplus-bringup.patch
-@@ -0,0 +1,1144 @@
+@@ -0,0 +1,1174 @@
 +diff -ruN '--exclude=.git' /root/xnu-ref/bsd/kern/bsd_init.c xnu-m/bsd/kern/bsd_init.c
 +--- a/bsd/kern/bsd_init.c	2026-11-07 23:09:19.257722188 +0800
-++++ b/bsd/kern/bsd_init.c	2026-11-09 20:44:07.087845782 +0800
+++++ b/bsd/kern/bsd_init.c	2026-11-09 20:59:18.406316662 +0800
 +@@ -495,7 +495,9 @@
 + #if DEBUG_BSDINIT
 + #define bsd_init_kprintf(x, ...) kprintf("bsd_init: " x, ## __VA_ARGS__)
@@ -1288,7 +1288,7 @@ new file mode 100644
 + 	throttle_init();
 +diff -ruN '--exclude=.git' /root/xnu-ref/iokit/Kernel/IOPlatformExpert.cpp xnu-m/iokit/Kernel/IOPlatformExpert.cpp
 +--- a/iokit/Kernel/IOPlatformExpert.cpp	2026-11-07 23:09:19.453187527 +0800
-++++ b/iokit/Kernel/IOPlatformExpert.cpp	2026-11-09 20:44:07.087845782 +0800
+++++ b/iokit/Kernel/IOPlatformExpert.cpp	2026-11-09 20:59:18.406316662 +0800
 +@@ -62,6 +62,8 @@
 + #include <pexpert/pexpert.h>
 + #include <uuid/uuid.h>
@@ -1334,7 +1334,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/arm/arm_init.c xnu-m/osfmk/arm/arm_init.c
 +--- a/osfmk/arm/arm_init.c	2026-11-07 23:09:19.530183852 +0800
-++++ b/osfmk/arm/arm_init.c	2026-11-09 20:44:07.087845782 +0800
+++++ b/osfmk/arm/arm_init.c	2026-11-09 20:59:18.406316662 +0800
 +@@ -38,6 +38,7 @@
 + #include <kern/timer_queue.h>
 + #include <kern/processor.h>
@@ -1466,7 +1466,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/arm64/alphaplus_probe.h xnu-m/osfmk/arm64/alphaplus_probe.h
 +--- a/osfmk/arm64/alphaplus_probe.h	1970-01-01 08:00:00.000000000 +0800
-++++ b/osfmk/arm64/alphaplus_probe.h	2026-11-09 20:44:07.087845782 +0800
+++++ b/osfmk/arm64/alphaplus_probe.h	2026-11-09 20:59:18.406316662 +0800
 +@@ -0,0 +1,98 @@
 ++/*
 ++ * alphaplus early boot probes: where the timed reset is placed.
@@ -1568,7 +1568,7 @@ new file mode 100644
 ++#endif /* _ARM64_ALPHA_PROBE_H_ */
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/arm64/start.s xnu-m/osfmk/arm64/start.s
 +--- a/osfmk/arm64/start.s	2026-11-07 23:09:19.540061779 +0800
-++++ b/osfmk/arm64/start.s	2026-11-09 20:44:07.087984239 +0800
+++++ b/osfmk/arm64/start.s	2026-11-09 20:59:18.406443024 +0800
 +@@ -89,6 +89,111 @@
 + .endmacro
 + 
@@ -1803,7 +1803,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/console/serial_console.c xnu-m/osfmk/console/serial_console.c
 +--- a/osfmk/console/serial_console.c	2026-11-07 23:09:19.547964200 +0800
-++++ b/osfmk/console/serial_console.c	2026-11-09 20:44:07.154722584 +0800
+++++ b/osfmk/console/serial_console.c	2026-11-09 20:59:18.406443024 +0800
 +@@ -186,14 +186,17 @@
 + void
 + console_init(void)
@@ -1848,8 +1848,8 @@ new file mode 100644
 + 	int i = 0;
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/kern/startup.c xnu-m/osfmk/kern/startup.c
 +--- a/osfmk/kern/startup.c	2026-11-07 23:09:19.592984926 +0800
-++++ b/osfmk/kern/startup.c	2026-11-09 20:44:07.121010531 +0800
-+@@ -71,6 +71,313 @@
+++++ b/osfmk/kern/startup.c	2026-11-09 20:59:18.483619359 +0800
++@@ -71,6 +71,334 @@
 + 
 + #include <mach/boolean.h>
 + #include <mach/machine.h>
@@ -2087,6 +2087,26 @@ new file mode 100644
 ++ * The mapping is not unmapped: map-then-unmap drew nothing at all on the phone,
 ++ * so the band is left in place and the leak is kept small by its size.
 ++ */
+++/*
+++ * One block per call: count the blocks, that is the step number.
+++ *
+++ * Glyphs keep losing strokes — the digits read "12" or "16" depending on which
+++ * segments survived — so this build stops drawing glyphs. Call N paints one
+++ * 90x90 block of its own in a fixed grid of two rows of fourteen. The blocks
+++ * never overlap: nothing is erased, nothing stacks, and a block that loses a
+++ * corner is still a block.
+++ *
+++ * Map only the band this block needs, and never unmap.
+++ *
+++ * Mapping the whole panel on every call (the 12:57 build did, 4.8 MB a time)
+++ * leaks kernel_map: twelve calls is about 58 MB, and console_init() then fails
+++ * in kmem_alloc() — which is exactly where the readout kept stopping. One band
+++ * of about 100 rows is 0.55 MB, so twenty-four calls cost 13 MB and the kernel
+++ * gets its console ring.
+++ *
+++ * The mapping is not unmapped: map-then-unmap drew nothing at all on the phone,
+++ * so the band is left in place and the leak is kept small by its size.
+++ */
 ++static unsigned int alpha_mark_next = 0;
 ++
 ++static void
@@ -2160,10 +2180,11 @@ new file mode 100644
 ++
 ++
 ++
+++
 + #include <mach/thread_act.h>
 + #include <mach/task_special_ports.h>
 + #include <mach/vm_param.h>
-+@@ -78,6 +385,7 @@
++@@ -78,6 +406,7 @@
 + #include <kern/mach_param.h>
 + #include <kern/misc_protos.h>
 + #include <kern/clock.h>
@@ -2171,7 +2192,7 @@ new file mode 100644
 + #include <kern/coalition.h>
 + #include <kern/cpu_number.h>
 + #include <kern/cpu_quiesce.h>
-+@@ -218,9 +526,151 @@
++@@ -218,9 +547,151 @@
 + 
 + TUNABLE(startup_debug_t, startup_debug, "startup_debug", 0);
 + 
@@ -2323,7 +2344,7 @@ new file mode 100644
 + 	if ((startup_debug & STARTUP_DEBUG_VERBOSE) &&
 + 	    startup_phase >= STARTUP_SUB_KPRINTF) {
 + 		kprintf("kernel_bootstrap: %s\n", message);
-+@@ -231,6 +681,8 @@
++@@ -231,6 +702,8 @@
 + static inline void
 + kernel_bootstrap_thread_log(const char *message)
 + {
@@ -2332,7 +2353,16 @@ new file mode 100644
 + 	if ((startup_debug & STARTUP_DEBUG_VERBOSE) &&
 + 	    startup_phase >= STARTUP_SUB_KPRINTF) {
 + 		kprintf("kernel_bootstrap_thread: %s\n", message);
-+@@ -787,7 +1239,9 @@
++@@ -475,7 +948,7 @@
++ 	}
++ 
++ 	kernel_bootstrap_log("console_init");
++-	console_init();
+++	/* alphaplus probe: console_init skipped */
++ 
++ 	kernel_bootstrap_log("stackshot_init");
++ 	stackshot_init();
++@@ -787,7 +1260,9 @@
 + 	 *	Start the user bootstrap.
 + 	 */
 + #ifdef  MACH_BSD
@@ -2344,7 +2374,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/vm/vm_init.c xnu-m/osfmk/vm/vm_init.c
 +--- a/osfmk/vm/vm_init.c	2026-11-07 23:09:19.637058667 +0800
-++++ b/osfmk/vm/vm_init.c	2026-11-09 20:44:07.087984239 +0800
+++++ b/osfmk/vm/vm_init.c	2026-11-09 20:59:18.406443024 +0800
 +@@ -66,6 +66,8 @@
 + #include <mach/machine/vm_types.h>
 + #include <mach/vm_map.h>
@@ -2364,7 +2394,7 @@ new file mode 100644
 + }
 +diff -ruN '--exclude=.git' /root/xnu-ref/pexpert/arm/pe_init.c xnu-m/pexpert/arm/pe_init.c
 +--- a/pexpert/arm/pe_init.c	2026-11-07 23:09:19.651106070 +0800
-++++ b/pexpert/arm/pe_init.c	2026-11-09 20:44:07.087984239 +0800
+++++ b/pexpert/arm/pe_init.c	2026-11-09 20:59:18.406443024 +0800
 +@@ -22,6 +22,8 @@
 + 
 + #include <pexpert/arm64/board_config.h>
