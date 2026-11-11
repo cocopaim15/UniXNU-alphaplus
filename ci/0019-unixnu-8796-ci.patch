@@ -1271,10 +1271,10 @@ diff --git a/patches/xnu/zzzz-alphaplus-bringup.patch b/patches/xnu/zzzz-alphapl
 new file mode 100644
 --- /dev/null
 +++ b/patches/xnu/zzzz-alphaplus-bringup.patch
-@@ -0,0 +1,1388 @@
+@@ -0,0 +1,1393 @@
 +diff -ruN '--exclude=.git' /root/xnu-ref/bsd/crypto/entropy/entropy_sysctl.c xnu-m/bsd/crypto/entropy/entropy_sysctl.c
 +--- a/bsd/crypto/entropy/entropy_sysctl.c	2026-11-07 23:09:19.243760729 +0800
-++++ b/bsd/crypto/entropy/entropy_sysctl.c	2026-11-11 22:36:55.462016358 +0800
+++++ b/bsd/crypto/entropy/entropy_sysctl.c	2026-11-11 22:43:41.153260335 +0800
 +@@ -130,6 +130,9 @@
 + static void
 + entropy_analysis_sysctl_startup(void)
@@ -1287,7 +1287,7 @@ new file mode 100644
 + 		sysctl_register_oid_early(&sysctl__kern_entropy_analysis_max_sample_count);
 +diff -ruN '--exclude=.git' /root/xnu-ref/bsd/dev/arm64/sysctl.c xnu-m/bsd/dev/arm64/sysctl.c
 +--- a/bsd/dev/arm64/sysctl.c	2026-11-07 23:09:19.246083315 +0800
-++++ b/bsd/dev/arm64/sysctl.c	2026-11-11 22:36:55.462016358 +0800
+++++ b/bsd/dev/arm64/sysctl.c	2026-11-11 22:43:41.153260335 +0800
 +@@ -224,6 +224,9 @@
 + static void
 + sysctl_load_brand_string(void)
@@ -1300,7 +1300,7 @@ new file mode 100644
 + 	unsigned int size = 0;
 +diff -ruN '--exclude=.git' /root/xnu-ref/bsd/kern/bsd_init.c xnu-m/bsd/kern/bsd_init.c
 +--- a/bsd/kern/bsd_init.c	2026-11-07 23:09:19.257722188 +0800
-++++ b/bsd/kern/bsd_init.c	2026-11-11 22:36:55.462016358 +0800
+++++ b/bsd/kern/bsd_init.c	2026-11-11 22:43:41.153260335 +0800
 +@@ -495,7 +495,9 @@
 + #if DEBUG_BSDINIT
 + #define bsd_init_kprintf(x, ...) kprintf("bsd_init: " x, ## __VA_ARGS__)
@@ -1314,7 +1314,7 @@ new file mode 100644
 + 	throttle_init();
 +diff -ruN '--exclude=.git' /root/xnu-ref/bsd/kern/hvg_sysctl.c xnu-m/bsd/kern/hvg_sysctl.c
 +--- a/bsd/kern/hvg_sysctl.c	2026-11-07 23:09:19.259206872 +0800
-++++ b/bsd/kern/hvg_sysctl.c	2026-11-11 22:36:55.462112156 +0800
+++++ b/bsd/kern/hvg_sysctl.c	2026-11-11 22:43:41.153366639 +0800
 +@@ -183,6 +183,9 @@
 + static void
 + hvg_sysctl_init(void)
@@ -1327,7 +1327,7 @@ new file mode 100644
 + 		struct sysctl_oid *oid;
 +diff -ruN '--exclude=.git' /root/xnu-ref/bsd/kern/kern_mib.c xnu-m/bsd/kern/kern_mib.c
 +--- a/bsd/kern/kern_mib.c	2026-11-07 23:09:19.268441923 +0800
-++++ b/bsd/kern/kern_mib.c	2026-11-11 22:36:55.462134155 +0800
+++++ b/bsd/kern/kern_mib.c	2026-11-11 22:43:41.153388539 +0800
 +@@ -697,6 +697,9 @@
 + static void
 + sysctl_load_devicetree_entries(void)
@@ -1350,8 +1350,13 @@ new file mode 100644
 + 	/*
 +diff -ruN '--exclude=.git' /root/xnu-ref/bsd/kern/kern_newsysctl.c xnu-m/bsd/kern/kern_newsysctl.c
 +--- a/bsd/kern/kern_newsysctl.c	2026-11-07 23:09:19.268441923 +0800
-++++ b/bsd/kern/kern_newsysctl.c	2026-11-11 22:36:55.651514541 +0800
-+@@ -2174,7 +2174,9 @@
+++++ b/bsd/kern/kern_newsysctl.c	2026-11-11 22:43:41.348175308 +0800
++@@ -2170,11 +2170,14 @@
++ 	}
++ 	return error;
++ }
+++extern void alphaplus_probe_step(const char *message);
++ 
 + void
 + sysctl_register_test_startup(struct sysctl_test_setup_spec *spec)
 + {
@@ -1361,7 +1366,7 @@ new file mode 100644
 + 
 + 	*oid = (struct sysctl_oid){
 + 		.oid_parent     = &sysctl__debug_test_children,
-+@@ -2188,6 +2190,7 @@
++@@ -2188,6 +2191,7 @@
 + 		.oid_version    = SYSCTL_OID_VERSION,
 + 		.oid_descr      = "",
 + 	};
@@ -1371,7 +1376,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/bsd/kern/stackshot.c xnu-m/bsd/kern/stackshot.c
 +--- a/bsd/kern/stackshot.c	2026-11-07 23:09:19.268441923 +0800
-++++ b/bsd/kern/stackshot.c	2026-11-11 22:36:55.462167355 +0800
+++++ b/bsd/kern/stackshot.c	2026-11-11 22:43:41.153426141 +0800
 +@@ -387,6 +387,9 @@
 + static void
 + atboot_stackshot_entitlement(void)
@@ -1384,7 +1389,7 @@ new file mode 100644
 + 		/* clamp to valid values */
 +diff -ruN '--exclude=.git' /root/xnu-ref/iokit/Kernel/IOPlatformExpert.cpp xnu-m/iokit/Kernel/IOPlatformExpert.cpp
 +--- a/iokit/Kernel/IOPlatformExpert.cpp	2026-11-07 23:09:19.453187527 +0800
-++++ b/iokit/Kernel/IOPlatformExpert.cpp	2026-11-11 22:36:55.462167355 +0800
+++++ b/iokit/Kernel/IOPlatformExpert.cpp	2026-11-11 22:43:41.153426141 +0800
 +@@ -62,6 +62,8 @@
 + #include <pexpert/pexpert.h>
 + #include <uuid/uuid.h>
@@ -1430,7 +1435,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/arm/arm_init.c xnu-m/osfmk/arm/arm_init.c
 +--- a/osfmk/arm/arm_init.c	2026-11-07 23:09:19.530183852 +0800
-++++ b/osfmk/arm/arm_init.c	2026-11-11 22:36:55.462167355 +0800
+++++ b/osfmk/arm/arm_init.c	2026-11-11 22:43:41.153426141 +0800
 +@@ -38,6 +38,7 @@
 + #include <kern/timer_queue.h>
 + #include <kern/processor.h>
@@ -1562,7 +1567,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/arm64/alphaplus_probe.h xnu-m/osfmk/arm64/alphaplus_probe.h
 +--- a/osfmk/arm64/alphaplus_probe.h	1970-01-01 08:00:00.000000000 +0800
-++++ b/osfmk/arm64/alphaplus_probe.h	2026-11-11 22:36:55.462167355 +0800
+++++ b/osfmk/arm64/alphaplus_probe.h	2026-11-11 22:43:41.153426141 +0800
 +@@ -0,0 +1,98 @@
 ++/*
 ++ * alphaplus early boot probes: where the timed reset is placed.
@@ -1664,7 +1669,7 @@ new file mode 100644
 ++#endif /* _ARM64_ALPHA_PROBE_H_ */
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/arm64/start.s xnu-m/osfmk/arm64/start.s
 +--- a/osfmk/arm64/start.s	2026-11-07 23:09:19.540061779 +0800
-++++ b/osfmk/arm64/start.s	2026-11-11 22:36:55.462281852 +0800
+++++ b/osfmk/arm64/start.s	2026-11-11 22:43:41.153583147 +0800
 +@@ -89,6 +89,111 @@
 + .endmacro
 + 
@@ -1899,7 +1904,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/console/serial_console.c xnu-m/osfmk/console/serial_console.c
 +--- a/osfmk/console/serial_console.c	2026-11-07 23:09:19.547964200 +0800
-++++ b/osfmk/console/serial_console.c	2026-11-11 22:36:55.462281852 +0800
+++++ b/osfmk/console/serial_console.c	2026-11-11 22:43:41.153583147 +0800
 +@@ -186,14 +186,17 @@
 + void
 + console_init(void)
@@ -1944,7 +1949,7 @@ new file mode 100644
 + 	int i = 0;
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/kern/startup.c xnu-m/osfmk/kern/startup.c
 +--- a/osfmk/kern/startup.c	2026-11-07 23:09:19.592984926 +0800
-++++ b/osfmk/kern/startup.c	2026-11-11 22:36:55.492619057 +0800
+++++ b/osfmk/kern/startup.c	2026-11-11 22:43:41.186263732 +0800
 +@@ -71,6 +71,388 @@
 + 
 + #include <mach/boolean.h>
@@ -2582,7 +2587,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/vm/vm_init.c xnu-m/osfmk/vm/vm_init.c
 +--- a/osfmk/vm/vm_init.c	2026-11-07 23:09:19.637058667 +0800
-++++ b/osfmk/vm/vm_init.c	2026-11-11 22:36:55.462281852 +0800
+++++ b/osfmk/vm/vm_init.c	2026-11-11 22:43:41.153583147 +0800
 +@@ -66,6 +66,8 @@
 + #include <mach/machine/vm_types.h>
 + #include <mach/vm_map.h>
@@ -2608,7 +2613,7 @@ new file mode 100644
 + }
 +diff -ruN '--exclude=.git' /root/xnu-ref/pexpert/arm/pe_init.c xnu-m/pexpert/arm/pe_init.c
 +--- a/pexpert/arm/pe_init.c	2026-11-07 23:09:19.651106070 +0800
-++++ b/pexpert/arm/pe_init.c	2026-11-11 22:36:55.462281852 +0800
+++++ b/pexpert/arm/pe_init.c	2026-11-11 22:43:41.153583147 +0800
 +@@ -22,6 +22,8 @@
 + 
 + #include <pexpert/arm64/board_config.h>
