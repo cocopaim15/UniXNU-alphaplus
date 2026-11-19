@@ -1271,10 +1271,10 @@ diff --git a/patches/xnu/zzzz-alphaplus-bringup.patch b/patches/xnu/zzzz-alphapl
 new file mode 100644
 --- /dev/null
 +++ b/patches/xnu/zzzz-alphaplus-bringup.patch
-@@ -0,0 +1,1695 @@
+@@ -0,0 +1,1817 @@
 +diff -ruN '--exclude=.git' /root/xnu-ref/bsd/crypto/entropy/entropy_sysctl.c xnu-m/bsd/crypto/entropy/entropy_sysctl.c
 +--- a/bsd/crypto/entropy/entropy_sysctl.c	2026-11-07 23:09:19.243760729 +0800
-++++ b/bsd/crypto/entropy/entropy_sysctl.c	2026-11-19 21:48:37.284441451 +0800
+++++ b/bsd/crypto/entropy/entropy_sysctl.c	2026-11-19 22:33:25.464744559 +0800
 +@@ -130,6 +130,9 @@
 + static void
 + entropy_analysis_sysctl_startup(void)
@@ -1287,7 +1287,7 @@ new file mode 100644
 + 		sysctl_register_oid_early(&sysctl__kern_entropy_analysis_max_sample_count);
 +diff -ruN '--exclude=.git' /root/xnu-ref/bsd/dev/arm64/sysctl.c xnu-m/bsd/dev/arm64/sysctl.c
 +--- a/bsd/dev/arm64/sysctl.c	2026-11-07 23:09:19.246083315 +0800
-++++ b/bsd/dev/arm64/sysctl.c	2026-11-19 21:48:37.284441451 +0800
+++++ b/bsd/dev/arm64/sysctl.c	2026-11-19 22:33:25.464744559 +0800
 +@@ -224,6 +224,9 @@
 + static void
 + sysctl_load_brand_string(void)
@@ -1300,7 +1300,7 @@ new file mode 100644
 + 	unsigned int size = 0;
 +diff -ruN '--exclude=.git' /root/xnu-ref/bsd/kern/bsd_init.c xnu-m/bsd/kern/bsd_init.c
 +--- a/bsd/kern/bsd_init.c	2026-11-07 23:09:19.257722188 +0800
-++++ b/bsd/kern/bsd_init.c	2026-11-19 21:48:37.284441451 +0800
+++++ b/bsd/kern/bsd_init.c	2026-11-19 22:33:25.464744559 +0800
 +@@ -495,7 +495,9 @@
 + #if DEBUG_BSDINIT
 + #define bsd_init_kprintf(x, ...) kprintf("bsd_init: " x, ## __VA_ARGS__)
@@ -1314,7 +1314,7 @@ new file mode 100644
 + 	throttle_init();
 +diff -ruN '--exclude=.git' /root/xnu-ref/bsd/kern/hvg_sysctl.c xnu-m/bsd/kern/hvg_sysctl.c
 +--- a/bsd/kern/hvg_sysctl.c	2026-11-07 23:09:19.259206872 +0800
-++++ b/bsd/kern/hvg_sysctl.c	2026-11-19 21:48:37.284584586 +0800
+++++ b/bsd/kern/hvg_sysctl.c	2026-11-19 22:33:25.464843456 +0800
 +@@ -183,6 +183,9 @@
 + static void
 + hvg_sysctl_init(void)
@@ -1327,7 +1327,7 @@ new file mode 100644
 + 		struct sysctl_oid *oid;
 +diff -ruN '--exclude=.git' /root/xnu-ref/bsd/kern/kern_mib.c xnu-m/bsd/kern/kern_mib.c
 +--- a/bsd/kern/kern_mib.c	2026-11-07 23:09:19.268441923 +0800
-++++ b/bsd/kern/kern_mib.c	2026-11-19 21:48:37.284607447 +0800
+++++ b/bsd/kern/kern_mib.c	2026-11-19 22:33:25.464865061 +0800
 +@@ -697,6 +697,9 @@
 + static void
 + sysctl_load_devicetree_entries(void)
@@ -1350,7 +1350,7 @@ new file mode 100644
 + 	/*
 +diff -ruN '--exclude=.git' /root/xnu-ref/bsd/kern/kern_newsysctl.c xnu-m/bsd/kern/kern_newsysctl.c
 +--- a/bsd/kern/kern_newsysctl.c	2026-11-07 23:09:19.268441923 +0800
-++++ b/bsd/kern/kern_newsysctl.c	2026-11-19 21:48:37.284645785 +0800
+++++ b/bsd/kern/kern_newsysctl.c	2026-11-19 22:33:25.464900563 +0800
 +@@ -241,9 +241,12 @@
 + 	*prevp = oidp;
 + }
@@ -1389,7 +1389,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/bsd/kern/stackshot.c xnu-m/bsd/kern/stackshot.c
 +--- a/bsd/kern/stackshot.c	2026-11-07 23:09:19.268441923 +0800
-++++ b/bsd/kern/stackshot.c	2026-11-19 21:48:37.284689080 +0800
+++++ b/bsd/kern/stackshot.c	2026-11-19 22:33:25.464940020 +0800
 +@@ -387,6 +387,9 @@
 + static void
 + atboot_stackshot_entitlement(void)
@@ -1402,7 +1402,7 @@ new file mode 100644
 + 		/* clamp to valid values */
 +diff -ruN '--exclude=.git' /root/xnu-ref/iokit/Kernel/IOPlatformExpert.cpp xnu-m/iokit/Kernel/IOPlatformExpert.cpp
 +--- a/iokit/Kernel/IOPlatformExpert.cpp	2026-11-07 23:09:19.453187527 +0800
-++++ b/iokit/Kernel/IOPlatformExpert.cpp	2026-11-19 21:48:37.284689080 +0800
+++++ b/iokit/Kernel/IOPlatformExpert.cpp	2026-11-19 22:33:25.464940020 +0800
 +@@ -62,6 +62,8 @@
 + #include <pexpert/pexpert.h>
 + #include <uuid/uuid.h>
@@ -1448,7 +1448,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/arm/arm_init.c xnu-m/osfmk/arm/arm_init.c
 +--- a/osfmk/arm/arm_init.c	2026-11-07 23:09:19.530183852 +0800
-++++ b/osfmk/arm/arm_init.c	2026-11-19 21:48:37.284689080 +0800
+++++ b/osfmk/arm/arm_init.c	2026-11-19 22:33:25.464940020 +0800
 +@@ -38,6 +38,7 @@
 + #include <kern/timer_queue.h>
 + #include <kern/processor.h>
@@ -1580,7 +1580,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/arm64/alphaplus_probe.h xnu-m/osfmk/arm64/alphaplus_probe.h
 +--- a/osfmk/arm64/alphaplus_probe.h	1970-01-01 08:00:00.000000000 +0800
-++++ b/osfmk/arm64/alphaplus_probe.h	2026-11-19 21:48:37.284689080 +0800
+++++ b/osfmk/arm64/alphaplus_probe.h	2026-11-19 22:33:25.464940020 +0800
 +@@ -0,0 +1,98 @@
 ++/*
 ++ * alphaplus early boot probes: where the timed reset is placed.
@@ -1682,7 +1682,7 @@ new file mode 100644
 ++#endif /* _ARM64_ALPHA_PROBE_H_ */
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/arm64/start.s xnu-m/osfmk/arm64/start.s
 +--- a/osfmk/arm64/start.s	2026-11-07 23:09:19.540061779 +0800
-++++ b/osfmk/arm64/start.s	2026-11-19 21:48:37.284830394 +0800
+++++ b/osfmk/arm64/start.s	2026-11-19 22:33:25.465061131 +0800
 +@@ -89,6 +89,111 @@
 + .endmacro
 + 
@@ -1917,7 +1917,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/console/serial_console.c xnu-m/osfmk/console/serial_console.c
 +--- a/osfmk/console/serial_console.c	2026-11-07 23:09:19.547964200 +0800
-++++ b/osfmk/console/serial_console.c	2026-11-19 21:48:37.284830394 +0800
+++++ b/osfmk/console/serial_console.c	2026-11-19 22:33:25.465061131 +0800
 +@@ -186,14 +186,17 @@
 + void
 + console_init(void)
@@ -1962,7 +1962,7 @@ new file mode 100644
 + 	int i = 0;
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/kern/debug.c xnu-m/osfmk/kern/debug.c
 +--- a/osfmk/kern/debug.c	2026-11-07 23:09:19.577687131 +0800
-++++ b/osfmk/kern/debug.c	2026-11-19 21:48:37.284830394 +0800
+++++ b/osfmk/kern/debug.c	2026-11-19 22:33:25.946350937 +0800
 +@@ -964,9 +964,12 @@
 +  * according to the device's boot-args.
 +  */
@@ -1976,10 +1976,20 @@ new file mode 100644
 + 	va_list panic_str_args;
 + 
 + 	va_start(panic_str_args, str);
++@@ -1067,6 +1070,9 @@
++ panic_trap_to_debugger(const char *panic_format_str, va_list *panic_args, unsigned int reason, void *ctx,
++     uint64_t panic_options_mask, void *panic_data_ptr, unsigned long panic_caller)
++ {
+++	extern void alphaplus_panic_paint(const char *fmt, va_list *ap);
+++	alphaplus_panic_paint(panic_format_str, panic_args);
+++
++ #pragma clang diagnostic pop
++ 
++ #if defined(__x86_64__) && (DEVELOPMENT || DEBUG)
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/kern/startup.c xnu-m/osfmk/kern/startup.c
 +--- a/osfmk/kern/startup.c	2026-11-07 23:09:19.592984926 +0800
-++++ b/osfmk/kern/startup.c	2026-11-19 21:48:37.714156552 +0800
-+@@ -71,6 +71,463 @@
+++++ b/osfmk/kern/startup.c	2026-11-19 22:33:25.946093095 +0800
++@@ -71,6 +71,478 @@
 + 
 + #include <mach/boolean.h>
 + #include <mach/machine.h>
@@ -2402,6 +2412,20 @@ new file mode 100644
 ++ * seconds after it reaches a named step, so "the phone loops menu -> kernel ->
 ++ * menu" means that step was reached, with no frame buffer involved at all.
 ++ */
+++/*
+++ * alpha_mark() disabled: the frame buffer readout is off the critical path.
+++ *
+++ * Every earlier build painted one bar per bring-up step, with a fresh
+++ * ml_io_map() per call and no unmap. The step at which the boot stopped moved
+++ * with the number of pixels painted (108k pixels: eight calls; 180k: one call),
+++ * so the marker itself is the suspect: a write into a stale or wrong frame
+++ * buffer mapping lands in whatever physical memory the mapping points at.
+++ *
+++ * This build paints nothing. Progress is read only through the reset probes
+++ * (alphaplus_reset=<step>): the kernel hands control to PSCI SYSTEM_RESET three
+++ * seconds after it reaches a named step, so "the phone loops menu -> kernel ->
+++ * menu" means that step was reached, with no frame buffer involved at all.
+++ */
 ++static unsigned int alpha_mark_next = 0;
 ++
 ++void
@@ -2440,14 +2464,112 @@ new file mode 100644
 ++
 ++
 ++
+++
 + #include <mach/thread_act.h>
 + #include <mach/task_special_ports.h>
 + #include <mach/vm_param.h>
-+@@ -78,6 +535,137 @@
++@@ -78,6 +550,234 @@
 + #include <kern/mach_param.h>
 + #include <kern/misc_protos.h>
 + #include <kern/clock.h>
 ++#include <arm64/alphaplus_probe.h>
+++
+++/* 5x12 glyphs, same table the loader uses (Android diag font). */
+++static const uint64_t alphaplus_font[95] = {
+++	0x0000000000000000, 0x0842108000020084, 0x0005294000000000, 0x15F528000000295F,
+++	0x1C52F88000023E94, 0x088556400004D542, 0x04528800000B2725, 0x0002108000000000,
+++	0x0421108800821042, 0x1084108200221108, 0x0957548000000000, 0x3E42000000000084,
+++	0x0000000000223000, 0x3E00000000000000, 0x0000000000471000, 0x0884420000008442,
+++	0x2318A88000022A31, 0x08429880000F9084, 0x1108C5C0000F8444, 0x1C4443E000074610,
+++	0x14A62100000423E9, 0x26D087E000074610, 0x1E10C5C000074631, 0x088443E000010844,
+++	0x1D18C5C000074631, 0x3D18C5C000074610, 0x08E2000000471000, 0x08E2000000223000,
+++	0x0222220000082082, 0x01F00000000003E0, 0x2082082000008888, 0x1108C5C000020084,
+++	0x2B98C5C0000F05B5, 0x2318A8800008C63F, 0x1D2949E00007CA52, 0x0210C5C000074421,
+++	0x252949E00007CA52, 0x1E1087E0000F8421, 0x1E1087E000008421, 0x0210C5C000074639,
+++	0x3F18C6200008C631, 0x084211C000071084, 0x1084238000032508, 0x0654C6200008C525,
+++	0x02108420000F8421, 0x2B5DC6200008C631, 0x2B59CE200008C739, 0x2318C5C000074631,
+++	0x1F18C5E000008421, 0x2318C5C001075631, 0x1F18C5E00008C525, 0x1C10C5C000074610,
+++	0x084213E000021084, 0x2318C62000074631, 0x1518C6200002114A, 0x2B18C620000556B5,
+++	0x08A546200008C54A, 0x08A5462000021084, 0x088443E0000F8442, 0x0421084E00E10842,
+++	0x0821042000084108, 0x1084210E00E42108, 0x0008A88000000000, 0x0000000001F00000,
+++	0x0000010400000000, 0x20E00000000B663E, 0x22F084200007C631, 0x22E0000000074421,
+++	0x23E84200000F4631, 0x22E000000007443F, 0x1E21498000010842, 0x22E000001D187A31,
+++	0x26D084200008C631, 0x0860100000071084, 0x10C020000C94A108, 0x0A9084200008A4A3,
+++	0x084210C000071084, 0x2AB000000008D6B5, 0x26D000000008C631, 0x22E0000000074631,
+++	0x22F000000210BE31, 0x23E0000021087A31, 0x26D0000000008421, 0x22E0000000074506,
+++	0x04F1080000064842, 0x23100000000B6631, 0x2310000000022951, 0x23100000000556B5,
+++	0x151000000008A884, 0x231000001D185B31, 0x11F00000000F8444, 0x0642109801821084,
+++	0x0842108000021084, 0x3042108300321084, 0x0004D64000000000,
+++};
+++
+++void
+++alphaplus_panic_paint(const char *fmt, va_list *ap)
+++{
+++	vm_offset_t pa = (vm_offset_t)PE_state.video.v_baseAddr;
+++	vm_size_t rb = (vm_size_t)PE_state.video.v_rowBytes;
+++	vm_size_t ht = (vm_size_t)PE_state.video.v_height;
+++	vm_size_t wd = (vm_size_t)PE_state.video.v_width;
+++	char buf[176];
+++	va_list copy;
+++	uint32_t *fb;
+++	vm_size_t stride;
+++	int scale = 3, cx, cy, i, line, gx, gy, dx, dy;
+++	uint64_t glyph, data;
+++	unsigned char ch;
+++
+++	if (pa == 0 || rb == 0 || wd < 400 || ht < 700) {
+++		return;
+++	}
+++	va_copy(copy, *ap);
+++	vsnprintf(buf, sizeof(buf), fmt, copy);
+++	va_end(copy);
+++
+++	fb = (uint32_t *)ml_io_map(pa, rb * (vm_size_t)400);
+++	if (fb == NULL) {
+++		return;
+++	}
+++	stride = rb / 4;
+++	cx = 4;
+++	cy = 4;
+++	line = 0;
+++	for (i = 0; buf[i] != 0 && line < 8; i++) {
+++		ch = (unsigned char)buf[i];
+++		if (ch == '\n' || cx + 6 * scale > (int)wd - 4) {
+++			cx = 4;
+++			cy += 14 * scale;
+++			line++;
+++			if (cy + 14 * scale > 400) {
+++				break;
+++			}
+++			continue;
+++		}
+++		if (ch < 32 || ch > 126) {
+++			ch = '?';
+++		}
+++		glyph = alphaplus_font[ch - 32];
+++		for (gy = 0; gy < 14 * scale; gy++) {
+++			for (gx = 0; gx < 6 * scale; gx++) {
+++				fb[(vm_size_t)(cy + gy) * stride + cx + gx] = 0xFF000000;
+++			}
+++		}
+++		for (gy = 0; gy < 12; gy++) {
+++			data = (gy < 6) ? ((glyph >> 32) >> (gy * 5)) : ((glyph & 0xFFFFFFFFULL) >> ((gy - 6) * 5));
+++			for (gx = 0; gx < 5; gx++) {
+++				if (((data >> gx) & 1) == 0) {
+++					continue;
+++				}
+++				for (dy = 0; dy < scale; dy++) {
+++					for (dx = 0; dx < scale; dx++) {
+++						fb[(vm_size_t)(cy + gy * scale + dy) * stride + cx + gx * scale + dx] = 0xFFFFFFFF;
+++					}
+++				}
+++			}
+++		}
+++		cx += 6 * scale;
+++	}
+++}
+++
+++
 ++
 ++extern void alphaplus_probe_step(const char *message);
 ++extern int fipspost_post_hmac(int fips);
@@ -2581,7 +2703,7 @@ new file mode 100644
 + #include <kern/coalition.h>
 + #include <kern/cpu_number.h>
 + #include <kern/cpu_quiesce.h>
-+@@ -218,9 +806,155 @@
++@@ -218,9 +918,155 @@
 + 
 + TUNABLE(startup_debug_t, startup_debug, "startup_debug", 0);
 + 
@@ -2737,7 +2859,7 @@ new file mode 100644
 + 	if ((startup_debug & STARTUP_DEBUG_VERBOSE) &&
 + 	    startup_phase >= STARTUP_SUB_KPRINTF) {
 + 		kprintf("kernel_bootstrap: %s\n", message);
-+@@ -231,6 +965,10 @@
++@@ -231,6 +1077,10 @@
 + static inline void
 + kernel_bootstrap_thread_log(const char *message)
 + {
@@ -2748,7 +2870,7 @@ new file mode 100644
 + 	if ((startup_debug & STARTUP_DEBUG_VERBOSE) &&
 + 	    startup_phase >= STARTUP_SUB_KPRINTF) {
 + 		kprintf("kernel_bootstrap_thread: %s\n", message);
-+@@ -407,7 +1145,7 @@
++@@ -407,7 +1257,7 @@
 + 		}
 + 		startup_phase = cur->subsystem - 1;
 + 		kernel_startup_log(cur->subsystem);
@@ -2757,7 +2879,7 @@ new file mode 100644
 + 		startup_entry_cur = ++cur;
 + 	}
 + 	kernel_startup_log(upto);
-+@@ -475,7 +1213,7 @@
++@@ -475,7 +1325,7 @@
 + 	}
 + 
 + 	kernel_bootstrap_log("console_init");
@@ -2766,7 +2888,7 @@ new file mode 100644
 + 
 + 	kernel_bootstrap_log("stackshot_init");
 + 	stackshot_init();
-+@@ -667,9 +1405,11 @@
++@@ -667,9 +1517,11 @@
 + #if CONFIG_TELEMETRY
 + 	kernel_bootstrap_log("bootprofile_init");
 + 	bootprofile_init();
@@ -2778,7 +2900,7 @@ new file mode 100644
 + 
 + 	/*
 + 	 * Initialize the globals used for permuting kernel
-+@@ -683,6 +1423,7 @@
++@@ -683,6 +1535,7 @@
 + 	vm_kernel_addrperm_ext = (vm_offset_t)(early_random() | 1);
 + 	vm_kernel_addrhash_salt = early_random();
 + 	vm_kernel_addrhash_salt_ext = early_random();
@@ -2786,7 +2908,7 @@ new file mode 100644
 + 
 + #ifdef  IOKIT
 + 	kernel_bootstrap_log("PE_init_iokit");
-+@@ -787,7 +1528,9 @@
++@@ -787,7 +1640,9 @@
 + 	 *	Start the user bootstrap.
 + 	 */
 + #ifdef  MACH_BSD
@@ -2798,7 +2920,7 @@ new file mode 100644
 + 
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/kern/zalloc.c xnu-m/osfmk/kern/zalloc.c
 +--- a/osfmk/kern/zalloc.c	2026-11-07 23:09:19.596991630 +0800
-++++ b/osfmk/kern/zalloc.c	2026-11-19 21:48:37.285030782 +0800
+++++ b/osfmk/kern/zalloc.c	2026-11-19 22:33:25.465240668 +0800
 +@@ -105,6 +105,7 @@
 + #include <vm/vm_compressor.h> /* C_SLOT_PACKED_PTR* */
 + 
@@ -2861,7 +2983,7 @@ new file mode 100644
 + found:
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/prng/prng_random.c xnu-m/osfmk/prng/prng_random.c
 +--- a/osfmk/prng/prng_random.c	2026-11-07 23:09:19.634007863 +0800
-++++ b/osfmk/prng/prng_random.c	2026-11-19 21:48:37.285030782 +0800
+++++ b/osfmk/prng/prng_random.c	2026-11-19 22:33:25.465240668 +0800
 +@@ -263,17 +263,24 @@
 + void
 + register_and_init_prng(struct cckprng_ctx *ctx, const struct cckprng_funcs *funcs)
@@ -2889,7 +3011,7 @@ new file mode 100644
 + 	cc_clear(sizeof(bootseed), bootseed);
 +diff -ruN '--exclude=.git' /root/xnu-ref/osfmk/vm/vm_init.c xnu-m/osfmk/vm/vm_init.c
 +--- a/osfmk/vm/vm_init.c	2026-11-07 23:09:19.637058667 +0800
-++++ b/osfmk/vm/vm_init.c	2026-11-19 21:48:37.285030782 +0800
+++++ b/osfmk/vm/vm_init.c	2026-11-19 22:33:25.465240668 +0800
 +@@ -66,6 +66,8 @@
 + #include <mach/machine/vm_types.h>
 + #include <mach/vm_map.h>
@@ -2915,7 +3037,7 @@ new file mode 100644
 + }
 +diff -ruN '--exclude=.git' /root/xnu-ref/pexpert/arm/pe_init.c xnu-m/pexpert/arm/pe_init.c
 +--- a/pexpert/arm/pe_init.c	2026-11-07 23:09:19.651106070 +0800
-++++ b/pexpert/arm/pe_init.c	2026-11-19 21:48:37.285030782 +0800
+++++ b/pexpert/arm/pe_init.c	2026-11-19 22:33:25.465240668 +0800
 +@@ -22,6 +22,8 @@
 + 
 + #include <pexpert/arm64/board_config.h>
